@@ -1,29 +1,28 @@
 # Using the same minimum as the godot-cpp project
 cmake_minimum_required(VERSION 3.17)
 
+include(FetchContent)
+
 # Silence unused variable warning when specified from toolchain
 if(CMAKE_C_COMPILER)
 endif()
 
-set(LIBNAME "EXTENSION-NAME" CACHE STRING "The name of the library")
+set(LIBNAME "godot-video" CACHE STRING "The name of the library")
 set(GODOT_PROJECT_DIR "demo" CACHE STRING "The directory of a Godot project folder")
 
 # Make sure all the dependencies are satisfied
 find_package(Python3 3.4 REQUIRED)
 find_program(GIT git REQUIRED)
 
-# Ensure godot-cpp submodule has been updated
-if(NOT EXISTS "${CMAKE_CURRENT_LIST_DIR}/godot-cpp/src")
-    message(NOTICE "godot-cpp bindings source not found")
-    message(NOTICE "initializing/updating the godot-cpp submodule...")
 
-    # update the c++ bindings submodule to populate it with the necessary source for the library
-    execute_process(
-        COMMAND git submodule update --init godot-cpp
-        WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
-        COMMAND_ERROR_IS_FATAL ANY
-    )
-endif()
+## godot-cpp
+FetchContent_Declare(
+        godot-cpp
+        GIT_REPOSITORY https://github.com/godotengine/godot-cpp.git
+        GIT_TAG 4.5
+)
+FetchContent_MakeAvailable(godot-cpp)
+
 add_subdirectory(godot-cpp SYSTEM)
 
 # Add godot-cpp's module path and include the exported functions.
