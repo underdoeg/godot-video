@@ -115,6 +115,7 @@ bool av_vk_ctx_setup(AVVulkanDeviceContext *ctx, godot::RenderingDevice *rd) {
 				VK_KHR_VIDEO_DECODE_QUEUE_EXTENSION_NAME,
 				VK_KHR_VIDEO_DECODE_AV1_EXTENSION_NAME,
 				VK_KHR_VIDEO_QUEUE_EXTENSION_NAME,
+				VK_KHR_VIDEO_DECODE_VP9_EXTENSION_NAME,
 				VK_KHR_VIDEO_DECODE_H264_EXTENSION_NAME,
 				VK_KHR_VIDEO_DECODE_H265_EXTENSION_NAME
 
@@ -170,7 +171,6 @@ bool av_vk_ctx_setup(AVVulkanDeviceContext *ctx, godot::RenderingDevice *rd) {
 		std::vector<VkQueueFamilyProperties> familyProperties(queueFamilyCount);
 		dev_props(ctx->phys_dev, &queueFamilyCount, familyProperties.data());
 
-
 		// dev_props(ctx->phys_dev, &queue_family_properties_count, nullptr);
 		//
 		// UtilityFunctions::print("num queue families: ", queue_family_properties_count);
@@ -202,6 +202,7 @@ bool av_vk_ctx_setup(AVVulkanDeviceContext *ctx, godot::RenderingDevice *rd) {
 				VkVideoCodecOperationFlagBitsKHR(
 						VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR |
 						VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_KHR |
+						VK_VIDEO_CODEC_OPERATION_DECODE_VP9_BIT_KHR |
 						VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR)
 			};
 			;
@@ -236,19 +237,25 @@ bool av_vk_ctx_setup(AVVulkanDeviceContext *ctx, godot::RenderingDevice *rd) {
 
 	return true;
 }
+
 AVBufferRef *av_vk_create_device(godot::RenderingDevice *rd) {
+	static AVBufferRef *hw_dev = nullptr;
+	if (hw_dev) {
+		return hw_dev;
+	}
+
 	auto device_type = AV_HWDEVICE_TYPE_VULKAN;
-	auto hw_dev = av_hwdevice_ctx_alloc(device_type);
+	hw_dev = av_hwdevice_ctx_alloc(device_type);
 	auto hw_ctx = reinterpret_cast<AVHWDeviceContext *>(hw_dev->data);
 	auto *vk = static_cast<AVVulkanDeviceContext *>(hw_ctx->hwctx);
 
 	av_vk_ctx_setup(vk, rd);
+	// TODO free the hwdevice and general cleanup
 	if (av_hwdevice_ctx_init(hw_dev) >= 0) {
 		UtilityFunctions::print("Created custom Vulkan FFmpeg HW device.");
 		return hw_dev;
 	}
 
 	UtilityFunctions::printerr("Failed to create Vulkan FFmpeg HW device.");
-	// TODO free the hw_dev
 	return nullptr;
 }

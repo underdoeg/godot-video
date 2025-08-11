@@ -18,8 +18,8 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 
 	using Clock = std::chrono::high_resolution_clock;
 
-	~GAVPlayback() {
-		_stop();
+	~GAVPlayback() override {
+		GAVPlayback::_stop();
 		av_packet_unref(pkt);
 		if (thread.joinable()) {
 			thread.join();
@@ -30,6 +30,7 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 	// AVCodecContext *dec_ctx = nullptr;
 	AVCodecContext *video_codec_ctx = nullptr;
 	AVPacket *pkt = av_packet_alloc();
+	AVFrame *active_frame = av_frame_alloc();
 
 	int video_stream_index = -1;
 	int audio_stream_index = -1;
@@ -62,7 +63,7 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 	bool decode_video_frame(AVPacket *pkt);
 
 	std::atomic_bool request_stop = false;
-	int max_frame_buffer_size = 16;
+	int max_frame_buffer_size = 4;
 
 	struct Frame {
 		AVFrame *frame = nullptr;

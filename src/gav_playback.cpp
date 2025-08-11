@@ -32,7 +32,12 @@ bool GAVPlayback::load(const String &file_path) {
 	const String path = ProjectSettings::get_singleton()->globalize_path(file_path);
 	UtilityFunctions::print("GAVPlayback::load ", path);
 
-	if (!ff_ok(avformat_open_input(&fmt_ctx, path.ascii().ptr(), nullptr, nullptr))) {
+	AVDictionary *options = nullptr;
+	// av_dict_set(&options, "loglevel", "debug", 0);
+
+	// av_log_set_level(AV_LOG_DEBUG);
+
+	if (!ff_ok(avformat_open_input(&fmt_ctx, path.ascii().ptr(), nullptr, &options))) {
 		UtilityFunctions::printerr("GAVPlayback could not open: ", path);
 		return false;
 	}
@@ -151,7 +156,7 @@ bool GAVPlayback::init_video() {
 	ctx->width = codecpar->width;
 	ctx->height = codecpar->height;
 	ctx->sw_format = AV_PIX_FMT_YUV420P;
-	//
+
 	// if (codec_ctx->format == AV_PIX_FMT_VULKAN) {
 	// 	// auto *vk = static_cast<AVVulkanFramesContext *>(codec_ctx->hwctx);
 	// 	// vk->img_flags |= VK_IMAGE_CREATE_MUTABLE_FORMAT_BIT | VK_IMAGE_CREATE_EXTENDED_USAGE_BIT;
@@ -204,23 +209,23 @@ void GAVPlayback::thread_func() {
 	}
 }
 void GAVPlayback::decode_next_frame() {
-
 	const auto ret = av_read_frame(fmt_ctx, pkt);
 	if (ret == AVERROR_EOF) {
 		decode_is_done = true;
+		av_packet_unref(pkt);
 		return;
 	}
 	if (ff_ok(ret)) {
 		// UtilityFunctions::print(pkt->stream_index);
 		if (pkt->stream_index == video_stream_index) {
+			// UtilityFunctions::print("new video frame");
 			decode_video_frame(pkt);
 		} else {
 			// decode_audio_frame(pkt);
 			// UtilityFunctions::print("cannot handle av packet");
 		}
 	}
-
-
+	av_packet_unref(pkt);
 }
 
 bool GAVPlayback::decode_video_frame(AVPacket *pkt) {
@@ -228,42 +233,95 @@ bool GAVPlayback::decode_video_frame(AVPacket *pkt) {
 		UtilityFunctions::printerr("GAVPlayback::decode_video_frame: null packet");
 		return false;
 	}
-	if (!ff_ok(avcodec_send_packet(video_codec_ctx, pkt))) {
+
+	AVFrame *tmp_frame = nullptr;
+
+	auto cleanup = [&] {
+		// UtilityFunctions::print("Decode video frame done");
+		if (tmp_frame) {
+			av_frame_free(&tmp_frame);
+		}
+		if (active_frame) {
+			av_frame_free(&active_frame);
+		}
+		active_frame = nullptr;
+	};
+
+	// UtilityFunctions::print("decode_video_frame");
+	auto send = [&] {
+		while (true) {
+			UtilityFunctions::print("send");
+			auto ret = avcodec_send_packet(video_codec_ctx, pkt);
+			if (ret == AVERROR(EAGAIN)) {
+				UtilityFunctions::print("----------------------- GAVPlayback::send_video_frame: EAGAIN");
+				break;
+			}
+			if (!ff_ok(ret)) {
+				UtilityFunctions::printerr("Failed to send packet to decoder");
+				return false;
+			}
+			break;
+		}
+		return true;
+	};
+	if (!send()) {
+		UtilityFunctions::printerr("Failed to send packet to decoder");
 		return false;
 	}
+	// UtilityFunctions::print("packet sent");
 
 	// UtilityFunctions::print("Decode video frame start");
 
-	auto frame = av_frame_alloc();
-	auto cleanup = [&] {
-		// UtilityFunctions::print("Decode video frame done");
-		av_frame_free(&frame);
+	auto receive = [&] {
+		// if (!active_frame) {
+		// active_frame = av_frame_alloc();
+		// }
+
+		while (true) {
+			UtilityFunctions::print("receive");
+			tmp_frame = av_frame_alloc();
+			auto ret = avcodec_receive_frame(video_codec_ctx, tmp_frame);
+			if (ret == AVERROR(EAGAIN)) {
+				UtilityFunctions::print("----------------------- GAVPlayback::decode_video_frame: EAGAIN");
+				break;
+			}
+			if (ret == AVERROR_EOF) {
+				decode_is_done = true;
+				return false;
+			}
+			if (!ff_ok(ret)) {
+				UtilityFunctions::printerr("avcodec_receive_frame failed");
+				cleanup();
+				return false;
+			}
+			active_frame = tmp_frame;
+			tmp_frame = nullptr;
+		}
+		return true;
 	};
 
-	// while (true) {
-	const auto ret = avcodec_receive_frame(video_codec_ctx, frame);
-	if (ret == AVERROR(EAGAIN)) {
-		cleanup();
-		decode_next_frame();
-		return false; //decode_video_frame(pkt);
-	}
-	if (ret == AVERROR_EOF) {
-		decode_is_done = true;
-		return false;
-	}
-	if (!ff_ok(ret)) {
-		UtilityFunctions::printerr("avcodec_receive_frame failed");
+	if (!receive()) {
+		UtilityFunctions::printerr("Failed to receive frame");
 		cleanup();
 		return false;
 	}
 
-	if (frame->format != AV_PIX_FMT_VULKAN) {
-		UtilityFunctions::printerr("Unsupported pixel format", av_get_pix_fmt_name(static_cast<AVPixelFormat>(frame->format)));
+	if (!active_frame) {
 		cleanup();
 		return false;
 	}
 
-	auto time = frame_time(frame);
+	if (tmp_frame) {
+		av_frame_free(&tmp_frame);
+	}
+
+	if (active_frame->format != AV_PIX_FMT_VULKAN) {
+		UtilityFunctions::printerr("Unsupported pixel format", av_get_pix_fmt_name(static_cast<AVPixelFormat>(active_frame->format)));
+		cleanup();
+		return false;
+	}
+
+	auto time = frame_time(active_frame);
 	if (time < Clock::now()) {
 		UtilityFunctions::print("GAVPlayback frame drop");
 		cleanup();
@@ -272,10 +330,10 @@ bool GAVPlayback::decode_video_frame(AVPacket *pkt) {
 
 	// UtilityFunctions::print("GAVPlayback::decode_video_frame 1 ", std::chrono::duration_cast<std::chrono::milliseconds>(time - Clock::now()).count());
 
-	frame_buffer.push_front({ frame, time });
+	frame_buffer.push_front({ active_frame, time });
 
 	// UtilityFunctions::print("GAVPlayback::decode_video_frame 2 ", std::chrono::duration_cast<std::chrono::milliseconds>(frame_buffer.back().timestamp - Clock::now()).count());
-
+	active_frame = nullptr;
 	return true;
 }
 
@@ -283,6 +341,7 @@ GAVPlayback::Clock::time_point GAVPlayback::frame_time(AVFrame *frame) {
 	// const auto pts = frame->pts;
 	auto seconds = std::chrono::duration<double>(frame->best_effort_timestamp * av_q2d(video_codec_ctx->pkt_timebase));
 	auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(seconds);
+	// UtilityFunctions::print("millis: ", millis.count());
 
 	// auto frame_time = std::chrono::duration<double>(pts_seconds);
 	if (waiting_for_start_time) {
@@ -316,6 +375,10 @@ void GAVPlayback::_update(double p_delta) {
 		return;
 	}
 
+	if (!video_ctx_ready) {
+		return;
+	}
+
 	if (frame_buffer.size() < max_frame_buffer_size) {
 		decode_next_frame();
 	}
@@ -323,25 +386,27 @@ void GAVPlayback::_update(double p_delta) {
 	// check for new video frames
 	const auto now = Clock::now();
 
-	std::optional<Frame> frame;
+	std::optional<Frame> video_frame;
 	while (!frame_buffer.empty()) {
 		// std::cout << (frame_buffer.front().timestamp  <= now) << " " << (now - frame_buffer.front().timestamp).count() << " " << std::endl;
 		// UtilityFunctions::print("GAVPlayback::decode_video_frame ", std::chrono::duration_cast<std::chrono::milliseconds>(frame_buffer.back().timestamp - Clock::now()).count());
 		// UtilityFunctions::print(frame_buffer.back().timestamp <= now);
 		if (auto f = frame_buffer.back(); f.timestamp <= now) {
-			if (frame) {
-				av_frame_free(&frame->frame);
+			if (video_frame) {
+				av_frame_free(&video_frame->frame);
 			}
-			frame = f;
+			video_frame = f;
 			frame_buffer.pop_back();
 		} else {
 			break;
 		}
 	}
-	if (frame) {
-		// UtilityFunctions::print("GAVPlayback::_update(): ");
-		texture.update(frame->frame);
-		av_frame_free(&frame->frame);
+	if (video_frame) {
+		UtilityFunctions::print("new video frame");
+		texture.update(video_frame->frame);
+		av_frame_free(&video_frame->frame);
+	} else {
+		// UtilityFunctions::print("no frame");
 	}
 
 	// UtilityFunctions::print("after: ", frame_buffer.size());

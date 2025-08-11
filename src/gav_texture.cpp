@@ -39,6 +39,7 @@ Ref<Texture2DRD> GAVTexture::setup(AVCodecContext *_ctx, RenderingDevice *_rd) {
 	codec_ctx = _ctx;
 	rd = _rd;
 
+
 	if (!vkf) {
 		auto v = reinterpret_cast<VkInstance>(rd->get_driver_resource(RenderingDevice::DRIVER_RESOURCE_TOPMOST_OBJECT, {}, 0));
 		vkf = new VkFunctions{
@@ -98,8 +99,10 @@ Ref<Texture2DRD> GAVTexture::setup(AVCodecContext *_ctx, RenderingDevice *_rd) {
 
 	return texture;
 }
-void GAVTexture::update(const AVFrame *frame) const {
+void GAVTexture::update(AVFrame *frame) const {
 	// create a texture
+
+	// UtilityFunctions::print("update texture");
 
 	auto *hw_dev = reinterpret_cast<AVHWDeviceContext *>(codec_ctx->hw_device_ctx->data);
 	// const VkFormat *fmts = nullptr;
@@ -132,12 +135,6 @@ void GAVTexture::update(const AVFrame *frame) const {
 		return;
 	}
 
-	// Create the actual command pool.
-	// debugAssertFunctionResult(vk::CreateCommandPool(appManager.device, &commandPoolInfo, nullptr, &appManager.commandPool), "Command Pool Creation");
-
-	// Resize the vector to have a number of elements equal to the number of swapchain images.
-	// appManager.cmdBuffers.resize(appManager.swapChainImages.size());
-
 	// Populate a command buffer info struct with a reference to the command pool from which the memory for the command buffer is taken.
 	// Notice the "level" parameter which ensures these will be primary command buffers.
 	VkCommandBufferAllocateInfo cmd_buf_info = {};
@@ -152,7 +149,7 @@ void GAVTexture::update(const AVFrame *frame) const {
 	if (vkf->allocate_command_buffers(vk->act_dev, &cmd_buf_info, &cmd_buf) != VK_SUCCESS) {
 		UtilityFunctions::printerr("Could not allocate command buffers!");
 		return;
-	};
+	}
 
 	auto *vk_frame = reinterpret_cast<AVVkFrame *>(frame->data[0]);
 
@@ -160,13 +157,13 @@ void GAVTexture::update(const AVFrame *frame) const {
 
 	vk_frames_ctx->lock_frame(frames, vk_frame);
 
-	// Acquire the image from FFmpeg.
-	if (vk_frame->sem[img_index] == VK_NULL_HANDLE || !vk_frame->sem_value[img_index]) {
-		// 	// vkQueueSubmit(wait = sem[img_index], value = sem_value[img_index])
-		// 	// use the sem on submit below
-		// 	// UtilityFunctions::print("should acquire frame");
-		UtilityFunctions::printerr("Could not acquire Vulkan Semaphore!");
-	}
+	// // Acquire the image from FFmpeg.
+	// if (vk_frame->sem[img_index] == VK_NULL_HANDLE || !vk_frame->sem_value[img_index]) {
+	// 	// 	// vkQueueSubmit(wait = sem[img_index], value = sem_value[img_index])
+	// 	// 	// use the sem on submit below
+	// 	// 	// UtilityFunctions::print("should acquire frame");
+	// 	UtilityFunctions::printerr("Could not acquire Vulkan Semaphore!");
+	// }
 
 	VkCommandBufferBeginInfo cmd_buf_begin;
 	cmd_buf_begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
@@ -198,6 +195,7 @@ void GAVTexture::update(const AVFrame *frame) const {
 	cregion.extent.width = frame->width;
 	cregion.extent.height = frame->height;
 	cregion.extent.depth = 1;
+
 	vkf->cmd_copy_image(cmd_buf, vk_frame->img[img_index], vk_frame->layout[img_index], vk_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &cregion);
 
 	if (vkEndCommandBuffer(cmd_buf) != VK_SUCCESS) {
@@ -232,23 +230,22 @@ void GAVTexture::update(const AVFrame *frame) const {
 	vsi.waitSemaphoreCount = 0;
 	vsi.pWaitSemaphores = nullptr; //vk_frame->sem;
 	vsi.signalSemaphoreCount = 0;
-	vsi.pSignalSemaphores = nullptr;  //vk_frame->sem; //->sem_value;
+	vsi.pSignalSemaphores = nullptr; //vk_frame->sem; //->sem_value;
 	vsi.pWaitDstStageMask = nullptr;
 
-	//result = vkQueueSubmit( Queue, 1, IN &vsi, VK_NULL_HANDLE );
 	if (auto result = vkf->queue_submit(vk_queue, 1, &vsi, VK_NULL_HANDLE); result != VK_SUCCESS) {
 		UtilityFunctions::printerr("Could not submit queue!", result);
 	} else {
-		// UtilityFunctions::print("Submitted frame!");
+		UtilityFunctions::print("Submitted frame!");
 	}
 
 	// Unblock thread3's device work.
-	vk_frame->sem_value[img_index] += 1;
-	VkSemaphoreSignalInfo signalInfo;
-	signalInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO;
-	signalInfo.pNext = nullptr;
-	signalInfo.semaphore = vk_frame->sem[img_index];
-	signalInfo.value = vk_frame->sem_value[img_index];
+	// vk_frame->sem_value[img_index] += 1;
+	// VkSemaphoreSignalInfo signalInfo;
+	// signalInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SIGNAL_INFO;
+	// signalInfo.pNext = nullptr;
+	// signalInfo.semaphore = vk_frame->sem[img_index];
+	// signalInfo.value = vk_frame->sem_value[img_index];
 
 	// vkSignalSemaphore(vk->act_dev, &signalInfo);
 
@@ -278,4 +275,5 @@ void GAVTexture::update(const AVFrame *frame) const {
 		// vkQueueSubmit(signal = sem[img_index], value = sem_value[img_index]);
 	}
 	vk_frames_ctx->unlock_frame(frames, vk_frame);
+	// UtilityFunctions::print("update texture done");
 }

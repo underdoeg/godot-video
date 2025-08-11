@@ -1,7 +1,7 @@
 [gd_scene load_steps=3 format=3 uid="uid://dh0oj81pufivs"]
 
 [ext_resource type="Script" uid="uid://bkwk40ybs8kgm" path="res://example.gd" id="1_jdh55"]
-[ext_resource type="VideoStream" uid="uid://ec6yc1ph3wtw" path="res://input.mp4" id="2_n51mc"]
+[ext_resource type="VideoStream" uid="uid://c45tv8cl0yaq7" path="res://8k_h265.mp4" id="2_n51mc"]
 
 [node name="Node" type="GridContainer"]
 anchors_preset = 15
@@ -28,6 +28,12 @@ autoplay = true
 expand = true
 
 [node name="video_tex" type="TextureRect" parent="."]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+expand_mode = 2
+
+[node name="video_tex2" type="TextureRect" parent="."]
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3

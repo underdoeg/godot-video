@@ -21,5 +21,5 @@ public:
 	[[nodiscard]] godot::Ref<godot::Texture2DRD> get_texture() const {
 		return texture;
 	}
-	void update(const AVFrame *av_frame) const;
+	void update(AVFrame *frame) const;
 };
