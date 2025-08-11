@@ -1,17 +1,13 @@
 #pragma once
 
+#include "godot_cpp/classes/engine.hpp"
 #include "godot_cpp/classes/image_texture.hpp"
-#include "godot_cpp/classes/texture2drd.hpp"
 #include "godot_cpp/classes/node.hpp"
-#include "godot_cpp/classes/rendering_device.hpp"
-#include "godot_cpp/classes/rendering_server.hpp"
-#include "godot_cpp/classes/texture.hpp"
+#include "godot_cpp/classes/texture2drd.hpp"
 #include "godot_cpp/classes/wrapped.hpp"
 #include "godot_cpp/variant/variant.hpp"
-#include "godot_cpp/classes/engine.hpp"
 
-#include "godot_cpp/classes/rd_texture_format.hpp"
-#include "godot_cpp/classes/rd_texture_view.hpp"
+///////////////////////// FOR TESTING NOT IN USE ///////////////////////////////////
 
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -28,7 +24,7 @@ class AvVideo : public Node {
 	AVCodecContext *dec_ctx = nullptr;
 	int video_stream_index = -1;
 
-	// AVCodecContext *codec_ctx = nullptr;
+	// AVCodecContext *video_codec_ctx = nullptr;
 
 protected:
 	static void _bind_methods();

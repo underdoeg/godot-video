@@ -1,4 +1,4 @@
-#include "av_video.h"
+#include "gav_video.h"
 
 #include <algorithm>
 #include <thread>
@@ -70,6 +70,7 @@ void process_hardware_frame(AVCodecContext *ctx, AVFrame *av_frame) {
 	} else {
 		av_frame_converted = av_frame;
 	}
+
 	// av_frame_unref(frame);
 
 	if (!texture->get_texture_rd_rid()) {
@@ -78,11 +79,13 @@ void process_hardware_frame(AVCodecContext *ctx, AVFrame *av_frame) {
 		const auto fmt = frames->sw_format; //AV_PIX_FMT_NV12; //AV_PIX_FMT_YUV420P;
 		int line_sizes[4];
 		size_t plane_sizes[4];
+
 		// const auto descr = av_pix_fmt_desc_get(fmt);
 		// UtilityFunctions::print(descr->nb_components);
 		// for (int i = 0; i < 4; i++) {
 		// UtilityFunctions::print(descr->comp[i].plane);
 		// }
+
 		av_image_fill_linesizes(line_sizes, fmt, av_frame->width);
 		av_image_fill_plane_sizes(plane_sizes, fmt, av_frame->height, reinterpret_cast<const ptrdiff_t *>(line_sizes));
 		// check planes
@@ -201,6 +204,7 @@ void process_hardware_frame(AVCodecContext *ctx, AVFrame *av_frame) {
 	// 	VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT /* sem wait stage */, 0,
 	// 	VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT,
 	// 	VK_ACCESS_2_SHADER_SAMPLED_READ_BIT);
+
 	VkCommandBufferBeginInfo cmd_buf_begin;
 	cmd_buf_begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 	cmd_buf_begin.pNext = nullptr;

@@ -46,3 +46,8 @@ linux.x86_64.single.release = "./linux/godot-video.linux.template_debug.x86_64.s
 ;web.wasm32.single.release = "./web/godot-video.web.template_release.wasm32.nothreads.wasm"
 ;web.wasm32.double.release = "./web/godot-video.web.template_release.wasm32.double.nothreads.wasm"
 ;
+
+;[dependencies]
+;linux: {
+;    "./linux/libswresample.so.6",
+;}

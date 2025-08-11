@@ -30,7 +30,7 @@ endif ()
 ExternalProject_Add(
         ffmpeg
         GIT_REPOSITORY https://github.com/FFmpeg/FFmpeg.git
-        GIT_TAG release/7.1
+        GIT_TAG release/8.0
         GIT_SHALLOW true
         PREFIX ${CMAKE_BINARY_DIR}/ffmpeg
         INSTALL_DIR ${FFMPEG_BUILD}
@@ -39,6 +39,7 @@ ExternalProject_Add(
         BUILD_COMMAND make -j -C <SOURCE_DIR>
         INSTALL_COMMAND make -C <SOURCE_DIR> install
 )
+
 
 message("FFMPEG will be installed into ${FFMPEG_BUILD}")
 
@@ -72,15 +73,27 @@ project(godot-video
         LANGUAGES CXX
 )
 
-add_library(${LIBNAME} SHARED)
-
-target_sources(${LIBNAME}
-        PRIVATE
-        src/av_video.cpp
-        src/av_video.h
+add_library(${LIBNAME} SHARED
+        #        src/gav_video.cpp
+        src/gav_stream.cpp
+        src/gav_loader.cpp
         src/register_types.cpp
-        src/register_types.h
+        src/gav_playback.cpp
+        src/gav_playback.h
+        src/vk_ctx.h
+        src/vk_ctx.cpp
+        src/helpers.h
+        src/gav_texture.cpp
+        src/gav_texture.h
 )
+
+#target_sources(${LIBNAME}
+#        PRIVATE
+#        src/av_video.cpp
+#        src/av_video.h
+#        src/register_types.cpp
+#        src/register_types.h
+#)
 
 # Fetch a list of the xml files to use for documentation and add to our target
 file(GLOB_RECURSE DOC_XML LIST_DIRECTORIES NO CONFIGURE_DEPENDS "${PROJECT_SOURCE_DIR}/doc_classes/*.xml")
@@ -91,10 +104,14 @@ if (DOC_XML)
         target_doc_sources(${LIBNAME} ${DOC_XML})
     endif ()
 endif ()
+set(GODOT_PROJECT_BINARY_DIR "${PROJECT_SOURCE_DIR}/${GODOT_PROJECT_DIR}/bin/${GODOTCPP_PLATFORM}")
 
 target_include_directories(${LIBNAME} PRIVATE ${FFMPEG_BUILD}/include) #${CMAKE_BINARY_DIR}/ffmpeg/src/ffmpeg
-target_link_directories(${LIBNAME} PRIVATE ${FFMPEG_BUILD}/lib)
-target_link_libraries(${LIBNAME} PRIVATE godot-cpp avcodec avdevice avutil)
+#target_link_directories(${LIBNAME} PRIVATE ${FFMPEG_BUILD}/lib)
+target_link_directories(${LIBNAME} PRIVATE ${GODOT_PROJECT_BINARY_DIR})
+target_link_libraries(${LIBNAME} PRIVATE godot-cpp vulkan avfilter swscale swresample avformat avcodec avdevice avutil)
+
+#target_link_options(${LIBNAME} PUBLIC -Wl,-rpath .bin/linux)
 
 set_target_properties(${LIBNAME}
         PROPERTIES
@@ -105,8 +122,20 @@ set_target_properties(${LIBNAME}
         OUTPUT_NAME "${LIBNAME}${GODOTCPP_SUFFIX}"
 )
 
-set(GODOT_PROJECT_BINARY_DIR "${PROJECT_SOURCE_DIR}/${GODOT_PROJECT_DIR}/bin/${GODOTCPP_PLATFORM}")
-
+add_custom_command(TARGET ${LIBNAME} PRE_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy "${FFMPEG_BUILD}/lib/*.so*" "${GODOT_PROJECT_BINARY_DIR}/"
+)
 add_custom_command(TARGET ${LIBNAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:${LIBNAME}>" "${GODOT_PROJECT_BINARY_DIR}/$<TARGET_FILE_NAME:${LIBNAME}>"
 )
+
+
+#function(copylibs)
+#    file(GLOB FFMPEG_LIBS
+#            "${FFMPEG_BUILD}/lib/*.so*"
+#    )
+#    file(COPY "$<TARGET_FILE:${LIBNAME}>" DESTINATION "${GODOT_PROJECT_BINARY_DIR}/$<TARGET_FILE_NAME:${LIBNAME}>" )
+#    message(${FFMPEG_LIBS})
+#endfunction()
+#
+#add_custom_command(TARGET ${LIBNAME} POST_BUILD COMMAND  ${CMAKE_COMMAND} )
