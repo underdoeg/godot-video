@@ -8,6 +8,7 @@ include(ExternalProject)
 if (CMAKE_C_COMPILER)
 endif ()
 
+set(CMAKE_CXX_STANDARD 20)
 set(LIBNAME "godot-video" CACHE STRING "The name of the library")
 set(GODOT_PROJECT_DIR "demo" CACHE STRING "The directory of a Godot project folder")
 
@@ -50,7 +51,7 @@ message("FFMPEG will be installed into ${FFMPEG_BUILD}")
 FetchContent_Declare(
         godot-cpp
         GIT_REPOSITORY https://github.com/godotengine/godot-cpp.git
-        GIT_TAG 8bb931c6a9ec6d725b80ca9ba3f947fe25e84307
+        GIT_TAG 1421ba26ad045fb23b35ad7360cf5b2f1de55738
 )
 FetchContent_MakeAvailable(godot-cpp)
 
@@ -85,6 +86,8 @@ add_library(${LIBNAME} SHARED
         src/helpers.h
         src/gav_texture.cpp
         src/gav_texture.h
+        src/shaders.h
+        src/shaders.cpp
 )
 
 #target_sources(${LIBNAME}

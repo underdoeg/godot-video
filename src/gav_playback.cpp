@@ -197,6 +197,7 @@ bool GAVPlayback::init_video() {
 	texture.setup(video_codec_ctx, rd);
 
 	video_ctx_ready = true;
+	wait_for_texture = 10;
 	return true;
 }
 bool GAVPlayback::init_audio() {
@@ -250,10 +251,10 @@ bool GAVPlayback::decode_video_frame(AVPacket *pkt) {
 	// UtilityFunctions::print("decode_video_frame");
 	auto send = [&] {
 		while (true) {
-			UtilityFunctions::print("send");
+			// UtilityFunctions::print("send");
 			auto ret = avcodec_send_packet(video_codec_ctx, pkt);
 			if (ret == AVERROR(EAGAIN)) {
-				UtilityFunctions::print("----------------------- GAVPlayback::send_video_frame: EAGAIN");
+				// UtilityFunctions::print("----------------------- GAVPlayback::send_video_frame: EAGAIN");
 				break;
 			}
 			if (!ff_ok(ret)) {
@@ -278,11 +279,11 @@ bool GAVPlayback::decode_video_frame(AVPacket *pkt) {
 		// }
 
 		while (true) {
-			UtilityFunctions::print("receive");
+			// UtilityFunctions::print("receive");
 			tmp_frame = av_frame_alloc();
 			auto ret = avcodec_receive_frame(video_codec_ctx, tmp_frame);
 			if (ret == AVERROR(EAGAIN)) {
-				UtilityFunctions::print("----------------------- GAVPlayback::decode_video_frame: EAGAIN");
+				// UtilityFunctions::print("----------------------- GAVPlayback::decode_video_frame: EAGAIN");
 				break;
 			}
 			if (ret == AVERROR_EOF) {
@@ -316,7 +317,7 @@ bool GAVPlayback::decode_video_frame(AVPacket *pkt) {
 	}
 
 	if (active_frame->format != AV_PIX_FMT_VULKAN) {
-		UtilityFunctions::printerr("Unsupported pixel format", av_get_pix_fmt_name(static_cast<AVPixelFormat>(active_frame->format)));
+		// UtilityFunctions::printerr("Unsupported pixel format", av_get_pix_fmt_name(static_cast<AVPixelFormat>(active_frame->format)));
 		cleanup();
 		return false;
 	}
@@ -379,8 +380,18 @@ void GAVPlayback::_update(double p_delta) {
 		return;
 	}
 
+	// TODO: remove
+	if (wait_for_texture > 0) {
+		wait_for_texture--; // = false;
+		return;
+	}
+
 	if (frame_buffer.size() < max_frame_buffer_size) {
 		decode_next_frame();
+	}
+
+	if (state == State::PAUSED) {
+		return;
 	}
 
 	// check for new video frames
@@ -402,7 +413,7 @@ void GAVPlayback::_update(double p_delta) {
 		}
 	}
 	if (video_frame) {
-		UtilityFunctions::print("new video frame");
+		// UtilityFunctions::print("new video frame");
 		texture.update(video_frame->frame);
 		av_frame_free(&video_frame->frame);
 	} else {
@@ -430,7 +441,7 @@ bool GAVPlayback::_is_paused() const {
 }
 double GAVPlayback::_get_length() const {
 	UtilityFunctions::print("TODO get length");
-	return 0;
+	return video_info.duration;
 }
 double GAVPlayback::_get_playback_position() const {
 	UtilityFunctions::print("TODO get playback position");
@@ -438,6 +449,9 @@ double GAVPlayback::_get_playback_position() const {
 }
 void GAVPlayback::_seek(double p_time) {
 	UtilityFunctions::printerr("TODO: seek");
+	// TODO convert p_Time to video timestamp format, maybe this is right, doubt it though
+	auto pts = p_time / av_q2d(video_codec_ctx->pkt_timebase);
+	avformat_seek_file(fmt_ctx, -1, INT64_MIN, pts, pts, 0);
 }
 
 void GAVPlayback::_set_audio_track(int32_t p_idx) {

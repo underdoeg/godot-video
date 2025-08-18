@@ -13,6 +13,11 @@ extern "C" {
 }
 
 class GAVPlayback : public godot::VideoStreamPlayback {
+	struct VideoInfo {
+		double duration;
+		bool has_audio;
+	};
+
 	GDCLASS(GAVPlayback, VideoStreamPlayback)
 	static void _bind_methods();
 
@@ -37,8 +42,11 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 	godot::RenderingDevice *rd;
 
 	bool video_ctx_ready = false;
+	int wait_for_texture = 0;
 
 	GAVTexture texture;
+
+	VideoInfo video_info;
 
 	enum State {
 		STOPPED,
