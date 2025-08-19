@@ -22,12 +22,31 @@ extern "C" {
 
 using namespace godot;
 
+RenderingDevice *GAVPlayback::decode_rd = nullptr;
+RenderingDevice *GAVPlayback::conversion_rd = nullptr;
+
 void GAVPlayback::_bind_methods() {
+
+}
+GAVPlayback::~GAVPlayback() {
+	GAVPlayback::_stop();
+	av_packet_unref(pkt);
+	// if (thread.joinable()) {
+	// 	thread.join();
+	// }
+	if (video_codec_ctx)
+		avcodec_free_context(&video_codec_ctx);
 }
 
 bool GAVPlayback::load(const String &file_path) {
-	// rd = RenderingServer::get_singleton()->create_local_rendering_device();
-	rd = RenderingServer::get_singleton()->get_rendering_device();
+	if (!decode_rd) {
+		decode_rd = RenderingServer::get_singleton()->get_rendering_device();
+		// decode_rd = RenderingServer::get_singleton()->create_local_rendering_device();
+	}
+	if (!conversion_rd) {
+		conversion_rd = decode_rd; // RenderingServer::get_singleton()->create_local_rendering_device();
+	}
+	// conversion_rd = RenderingServer::get_singleton()->get_rendering_device();
 
 	const String path = ProjectSettings::get_singleton()->globalize_path(file_path);
 	UtilityFunctions::print("GAVPlayback::load ", path);
@@ -80,7 +99,7 @@ bool GAVPlayback::load(const String &file_path) {
 		UtilityFunctions::print("GAVPlayback:: no audio stream found");
 	}
 
-	return false;
+	return true;
 }
 
 bool GAVPlayback::init_video() {
@@ -133,7 +152,7 @@ bool GAVPlayback::init_video() {
 		return false;
 	}
 
-	video_codec_ctx->hw_device_ctx = av_vk_create_device(rd);
+	video_codec_ctx->hw_device_ctx = av_vk_create_device(decode_rd);
 	video_codec_ctx->pix_fmt = accel_config->pix_fmt;
 	// }
 
@@ -194,21 +213,20 @@ bool GAVPlayback::init_video() {
 		return false;
 	}
 
-	texture.setup(video_codec_ctx, rd);
+	texture.setup(video_codec_ctx, conversion_rd);
 
 	video_ctx_ready = true;
-	wait_for_texture = 10;
 	return true;
 }
 bool GAVPlayback::init_audio() {
 	UtilityFunctions::print("TODO init audio");
 	return false;
 }
-void GAVPlayback::thread_func() {
-	UtilityFunctions::printerr("Starting video thread");
-	while (!request_stop) {
-	}
-}
+// void GAVPlayback::thread_func() {
+// 	UtilityFunctions::printerr("Starting video thread");
+// 	while (!request_stop) {
+// 	}
+// }
 void GAVPlayback::decode_next_frame() {
 	const auto ret = av_read_frame(fmt_ctx, pkt);
 	if (ret == AVERROR_EOF) {
@@ -340,6 +358,8 @@ bool GAVPlayback::decode_video_frame(AVPacket *pkt) {
 
 GAVPlayback::Clock::time_point GAVPlayback::frame_time(AVFrame *frame) {
 	// const auto pts = frame->pts;
+
+	// (av_q2d(video.av_stream->time_base) * double(pts)) : double(pts) * 1e-6
 	auto seconds = std::chrono::duration<double>(frame->best_effort_timestamp * av_q2d(video_codec_ctx->pkt_timebase));
 	auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(seconds);
 	// UtilityFunctions::print("millis: ", millis.count());
@@ -377,12 +397,6 @@ void GAVPlayback::_update(double p_delta) {
 	}
 
 	if (!video_ctx_ready) {
-		return;
-	}
-
-	// TODO: remove
-	if (wait_for_texture > 0) {
-		wait_for_texture--; // = false;
 		return;
 	}
 

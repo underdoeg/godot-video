@@ -9,3 +9,4 @@
 #include <godot_cpp/variant/string.hpp>
 
 godot::RID yuv420(godot::RenderingDevice *rd, godot::Vector2i size);
+godot::RID nv12(godot::RenderingDevice *rd, godot::Vector2i size);

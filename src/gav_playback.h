@@ -23,13 +23,7 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 
 	using Clock = std::chrono::high_resolution_clock;
 
-	~GAVPlayback() override {
-		GAVPlayback::_stop();
-		av_packet_unref(pkt);
-		if (thread.joinable()) {
-			thread.join();
-		}
-	}
+	~GAVPlayback() override;
 
 	AVFormatContext *fmt_ctx = nullptr;
 	// AVCodecContext *dec_ctx = nullptr;
@@ -39,10 +33,10 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 
 	int video_stream_index = -1;
 	int audio_stream_index = -1;
-	godot::RenderingDevice *rd;
+	static godot::RenderingDevice *decode_rd ;
+	static godot::RenderingDevice *conversion_rd;
 
 	bool video_ctx_ready = false;
-	int wait_for_texture = 0;
 
 	GAVTexture texture;
 
@@ -61,8 +55,8 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 	bool init_audio();
 	bool has_audio() { return audio_stream_index >= 0; }
 
-	std::thread thread;
-	void thread_func();
+	// std::thread thread;
+	// void thread_func();
 
 	bool decode_is_done = false;
 
