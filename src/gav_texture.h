@@ -4,7 +4,6 @@
 
 #pragma once
 
-#include <vulkan/vulkan_core.h>
 #include <array>
 
 #include "godot_cpp/classes/rendering_device.hpp"

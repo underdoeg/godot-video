@@ -14,6 +14,8 @@
 extern "C" {
 #include <libavformat/avformat.h>
 #include <libavutil/pixdesc.h>
+// #include <libswscale/swscale.h>
+// #include <libswresample/swresample.h>
 }
 
 #include <godot_cpp/classes/engine.hpp>
@@ -26,7 +28,6 @@ RenderingDevice *GAVPlayback::decode_rd = nullptr;
 RenderingDevice *GAVPlayback::conversion_rd = nullptr;
 
 void GAVPlayback::_bind_methods() {
-
 }
 GAVPlayback::~GAVPlayback() {
 	GAVPlayback::_stop();
@@ -342,7 +343,7 @@ bool GAVPlayback::decode_video_frame(AVPacket *pkt) {
 
 	auto time = frame_time(active_frame);
 	if (time < Clock::now()) {
-		UtilityFunctions::print("GAVPlayback frame drop");
+		// UtilityFunctions::print("GAVPlayback frame drop");
 		cleanup();
 		return false;
 	}
@@ -426,6 +427,7 @@ void GAVPlayback::_update(double p_delta) {
 			break;
 		}
 	}
+
 	if (video_frame) {
 		// UtilityFunctions::print("new video frame");
 		texture.update(video_frame->frame);
@@ -469,6 +471,7 @@ void GAVPlayback::_seek(double p_time) {
 }
 
 void GAVPlayback::_set_audio_track(int32_t p_idx) {
+	UtilityFunctions::printerr("set_audio_track is not supported");
 }
 
 Ref<Texture2D> GAVPlayback::_get_texture() const {

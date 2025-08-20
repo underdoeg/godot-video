@@ -113,9 +113,7 @@ bool av_vk_ctx_setup(AVVulkanDeviceContext *ctx, godot::RenderingDevice *rd) {
 
 				// added in fork
 				VK_KHR_VIDEO_DECODE_QUEUE_EXTENSION_NAME,
-				VK_KHR_VIDEO_DECODE_AV1_EXTENSION_NAME,
 				VK_KHR_VIDEO_QUEUE_EXTENSION_NAME,
-				VK_KHR_VIDEO_DECODE_VP9_EXTENSION_NAME,
 				VK_KHR_VIDEO_DECODE_H264_EXTENSION_NAME,
 				VK_KHR_VIDEO_DECODE_H265_EXTENSION_NAME,
 				VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME,
@@ -130,6 +128,14 @@ bool av_vk_ctx_setup(AVVulkanDeviceContext *ctx, godot::RenderingDevice *rd) {
 				// VK_EXT_DESCRIPTOR_BUFFER_EXTENSION_NAME,
 				// VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME
 			};
+
+#ifdef VK_KHR_VIDEO_DECODE_AV1_EXTENSION_NAME
+			enabled_extensions.push_back(VK_KHR_VIDEO_DECODE_AV1_EXTENSION_NAME);
+#endif
+#ifdef VK_KHR_VIDEO_DECODE_VP9_EXTENSION_NAME
+			enabled_extensions.push_back(VK_KHR_VIDEO_DECODE_VP9_EXTENSION_NAME);
+#endif
+
 			for (const auto &v : enabled_extensions) {
 				if (strcmp(v, ext) == 0) {
 					return false;
@@ -191,9 +197,6 @@ bool av_vk_ctx_setup(AVVulkanDeviceContext *ctx, godot::RenderingDevice *rd) {
 			const auto v = familyProperties[j];
 			// if(v.queueFlags & VK_QUEUE_VIDEO_DECODE_BIT_KHR) {
 
-			VkQueueFlagBits;
-			VkQueueFlags;
-
 			ctx->qf[ctx->nb_qf] = {
 				j,
 				1,
@@ -202,13 +205,19 @@ bool av_vk_ctx_setup(AVVulkanDeviceContext *ctx, godot::RenderingDevice *rd) {
 				// https://github.com/godotengine/godot/blob/2d113cc224cb9be07866d003819fcef2226a52ea/drivers/vulkan/rendering_device_driver_vulkan.cpp#L1050
 				VkQueueFlagBits(v.queueFlags),
 
+#ifdef VK_KHR_VIDEO_DECODE_AV1_EXTENSION_NAME
 				VkVideoCodecOperationFlagBitsKHR(
 						VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR |
 						VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_KHR |
-						VK_VIDEO_CODEC_OPERATION_DECODE_VP9_BIT_KHR |
+						// VK_VIDEO_CODEC_OPERATION_DECODE_VP9_BIT_KHR |
 						VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR)
+
+#else
+				VkVideoCodecOperationFlagBitsKHR(
+						VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR |
+						VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_KHR)
+#endif
 			};
-			;
 			ctx->nb_qf += 1;
 			// vk->nb
 			// }

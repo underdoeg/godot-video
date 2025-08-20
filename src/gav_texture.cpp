@@ -78,6 +78,9 @@ Ref<Texture2DRD> GAVTexture::setup(AVCodecContext *_ctx, RenderingDevice *_rd) {
 	}
 
 	auto *frames = reinterpret_cast<AVHWFramesContext *>(codec_ctx->hw_frames_ctx->data);
+
+	UtilityFunctions::print("reported pixel format on setup is ", av_get_pix_fmt_name(frames->sw_format));
+
 	width = codec_ctx->width;
 	height = codec_ctx->height;
 	UtilityFunctions::print("create texture of size ", width, "x", height);
@@ -145,12 +148,12 @@ bool GAVTexture::setup_pipeline(AVPixelFormat pixel_format) {
 	// auto *vk = static_cast<AVVulkanDeviceContext *>(hw_dev->hwctx);
 	// auto *frames = reinterpret_cast<AVHWFramesContext *>(codec_ctx->hw_frames_ctx->data);
 
-	UtilityFunctions::print("frame format on setup is: ", av_get_pix_fmt_name(pixel_format));
+	UtilityFunctions::print("expected pixel format is: ", av_get_pix_fmt_name(pixel_format));
 	std::array<int, 4> line_sizes{ 0, 0, 0, 0 };
 	std::array<ptrdiff_t, 4> line_sizes_ptr;
 	std::array<size_t, 4> plane_sizes{ 0, 0, 0, 0 };
 
-	if (av_image_fill_linesizes(line_sizes.data(), pixel_format, width)<0) {
+	if (av_image_fill_linesizes(line_sizes.data(), pixel_format, width) < 0) {
 		UtilityFunctions::printerr("Could not fill line sizes");
 		return false;
 	}
@@ -324,7 +327,6 @@ void GAVTexture::update(AVFrame *frame) {
 	vk_frames_ctx->lock_frame(frames, vk_frame);
 
 	auto release_frames = [&] {
-		// UtilityFunctions::print("cleanup");
 		vk_frames_ctx->unlock_frame(frames, vk_frame);
 	};
 

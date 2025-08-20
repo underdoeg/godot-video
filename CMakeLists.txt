@@ -1,5 +1,5 @@
 # Using the same minimum as the godot-cpp project
-cmake_minimum_required(VERSION 3.17)
+cmake_minimum_required(VERSION 3.5)
 
 include(FetchContent)
 include(ExternalProject)
@@ -11,17 +11,167 @@ endif ()
 set(CMAKE_CXX_STANDARD 20)
 set(LIBNAME "godot-video" CACHE STRING "The name of the library")
 set(GODOT_PROJECT_DIR "demo" CACHE STRING "The directory of a Godot project folder")
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 
 # Make sure all the dependencies are satisfied
 find_package(Python3 3.4 REQUIRED)
 find_program(GIT git REQUIRED)
 
+set(CMAKE_SHARED_LINKER_FLAGS "-Wl,-Bsymbolic")
+
+set(LIBS_INSTALL ${CMAKE_BINARY_DIR}/libs)
+set(LIBS_INCLUDE ${LIBS_INSTALL}/include)
+set(LIBS_LINK ${LIBS_INSTALL}/lib)
+message("libraries will bi installed into ${LIBS_INSTALL}")
+
+# X264
+set(X264_DIR ${CMAKE_BINARY_DIR}/x264)
+ExternalProject_Add(
+        x264
+        GIT_REPOSITORY https://code.videolan.org/videolan/x264.git
+        GIT_TAG master
+        GIT_SHALLOW true
+        PREFIX ${X264_DIR}
+        INSTALL_DIR ${LIBS_INSTALL}
+        #        CONFIGURE_COMMAND echo <INSTALL_DIR>
+        CONFIGURE_COMMAND cd <SOURCE_DIR> && ./configure --prefix=<INSTALL_DIR> --enable-static --disable-cli --enable-pic
+        BUILD_COMMAND make -j -C <SOURCE_DIR>
+        INSTALL_COMMAND make -C <SOURCE_DIR> install
+)
+
+set(X265_DIR ${CMAKE_BINARY_DIR}/x265)
+ExternalProject_Add(
+        x265
+        GIT_REPOSITORY https://phwhitfield@bitbucket.org/multicoreware/x265_git.git
+        GIT_TAG master
+        GIT_SHALLOW true
+        PREFIX ${X265_DIR}
+        INSTALL_DIR ${LIBS_INSTALL}
+        CMAKE_ARGS
+        -DCMAKE_INSTALL_PREFIX=${LIBS_INSTALL}
+        -DCMAKE_PREFIX_PATH=${XZ_DIR}
+        -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+        CONFIGURE_COMMAND ${CMAKE_COMMAND} -DCMAKE_INSTALL_PREFIX:PATH=<INSTALL_DIR>
+        <SOURCE_DIR>/source # Tell CMake to use subdirectory as source.
+)
+
+set(ZLIB_DIR ${CMAKE_BINARY_DIR}/zlib)
+ExternalProject_Add(
+        zlib
+        GIT_REPOSITORY https://github.com/madler/zlib.git
+        GIT_TAG v1.3.1
+        GIT_SHALLOW true
+        PREFIX ${ZLIB_DIR}
+        INSTALL_DIR ${LIBS_INSTALL}
+        CMAKE_ARGS
+        -DCMAKE_INSTALL_PREFIX=${LIBS_INSTALL}
+        -DCMAKE_PREFIX_PATH=${ZLIB_DIR}
+        -DBUILD_SHARED_LIBS=OFF
+)
+
+# XZ
+set(XZ_DIR ${CMAKE_BINARY_DIR}/xz)
+ExternalProject_Add(
+        xz
+        GIT_REPOSITORY https://github.com/tukaani-project/xz
+        GIT_TAG v5.8
+        GIT_SHALLOW true
+        PREFIX ${XZ_DIR}
+        INSTALL_DIR ${LIBS_INSTALL}
+        CMAKE_ARGS
+        -DCMAKE_INSTALL_PREFIX=${LIBS_INSTALL}
+        -DCMAKE_PREFIX_PATH=${XZ_DIR}
+)
+
+# bzip2
+set(BZIP2_DIR ${CMAKE_BINARY_DIR}/bzip2)
+ExternalProject_Add(
+        bzip2
+        GIT_REPOSITORY https://gitlab.com/bzip2/bzip2.git
+        GIT_TAG master
+        GIT_SHALLOW true
+        PREFIX ${BZIP2_DIR}
+        INSTALL_DIR ${LIBS_INSTALL}
+        CMAKE_ARGS
+        -DENABLE_SHARED_LIB=OFF
+        -DENABLE_STATIC_LIB=ON
+        -DENABLE_STATIC_LIB_IS_PIC=ON
+        -DCMAKE_INSTALL_PREFIX=${LIBS_INSTALL}
+        -DCMAKE_PREFIX_PATH=${BZIP2_DIR}
+)
+
+# LIBVA
+set(LIBVA_DIR ${CMAKE_BINARY_DIR}/libva)
+ExternalProject_Add(
+        libva
+        GIT_REPOSITORY https://github.com/intel/libva.git
+        GIT_TAG 2.22.0
+        GIT_SHALLOW true
+        PREFIX ${LIBVA_DIR}
+        INSTALL_DIR ${LIBS_INSTALL}
+        #        CONFIGURE_COMMAND echo <INSTALL_DIR>
+        CONFIGURE_COMMAND cd <SOURCE_DIR> && ./autogen.sh --prefix=<INSTALL_DIR> --libdir=<INSTALL_DIR>/lib --enable-static --enable-pic --disable-shared
+        BUILD_COMMAND make -j -C <SOURCE_DIR>
+        INSTALL_COMMAND make -C <SOURCE_DIR> install
+)
+
+# LIBXCB
+set(LIBXCB_DIR ${CMAKE_BINARY_DIR}/libxcb)
+ExternalProject_Add(
+        libxcb
+        GIT_REPOSITORY https://gitlab.freedesktop.org/xorg/lib/libxcb.git
+        GIT_TAG libxcb-1.17.0
+        GIT_SHALLOW true
+        PREFIX ${LIBXCB_DIR}
+        INSTALL_DIR ${LIBS_INSTALL}
+        #        CONFIGURE_COMMAND echo <INSTALL_DIR>
+        CONFIGURE_COMMAND cd <SOURCE_DIR> && ./autogen.sh --prefix=<INSTALL_DIR> --libdir=<INSTALL_DIR>/lib --enable-static --enable-pic --disable-shared
+        BUILD_COMMAND make -j -C <SOURCE_DIR>
+        INSTALL_COMMAND make -C <SOURCE_DIR> install
+)
+
+## LIBVDPAU
+#set(LIBVDPAU_DIR ${CMAKE_BINARY_DIR}/libvdpau)
+#ExternalProject_Add(
+#        libvdpau
+#        GIT_REPOSITORY https://gitlab.freedesktop.org/vdpau/libvdpau.git
+#        GIT_TAG 1.5
+#        GIT_SHALLOW true
+#        PREFIX ${LIBVDPAU_DIR}
+#        INSTALL_DIR ${LIBS_INSTALL}
+#        #        CONFIGURE_COMMAND echo <INSTALL_DIR>
+#        CONFIGURE_COMMAND cd <SOURCE_DIR> && meson --prefix=<INSTALL_DIR> --libdir=<INSTALL_DIR>/lib  <INSTALL_DIR>/build
+#        BUILD_COMMAND ninja -C <INSTALL_DIR>/build install
+#        INSTALL_COMMAND  "" #make -C <SOURCE_DIR> install
+#)
+#
+### LIBDRM
+#set(LIBDRM_DIR ${CMAKE_BINARY_DIR}/libdrm)
+#ExternalProject_Add(
+#        libdrm
+#        GIT_REPOSITORY https://gitlab.freedesktop.org/mesa/libdrm.git
+#        GIT_TAG libdrm-2.4.125
+#        GIT_SHALLOW true
+#        PREFIX ${LIBDRM_DIR}
+#        INSTALL_DIR ${LIBS_INSTALL}
+#        #        CONFIGURE_COMMAND echo <INSTALL_DIR>
+#        CONFIGURE_COMMAND cd <SOURCE_DIR> && meson --prefix=<INSTALL_DIR> --libdir=<INSTALL_DIR>/lib  <INSTALL_DIR>/build
+#        BUILD_COMMAND ninja -C <INSTALL_DIR>/build install
+#        INSTALL_COMMAND  "" #make -C <SOURCE_DIR> install
+#)
 
 # FFMPEG
 #set(FFMPEG_LIBRARY ${CMAKE_INSTALL_FULL_LIBDIR}/${CMAKE_STATIC_LIBRARY_PREFIX}ffmpeg${CMAKE_STATIC_LIBRARY_SUFFIX})
-set(FFMPEG_BUILD ${CMAKE_BINARY_DIR}/ffmpeg/build)
-# --enable-shared for so libs (if set, --enable-pic is not necessary)
-set(FFMPEG_CONFIG --enable-shared --enable-gpl --enable-gnutls --enable-libaom --enable-libass --enable-libfdk-aac --enable-libfreetype --enable-libmp3lame --enable-libopus --enable-libsvtav1 --enable-libdav1d --enable-libvorbis --enable-libvpx --enable-libx264 --enable-libx265 --enable-nonfree)
+set(FFMPEG_DIR ${CMAKE_BINARY_DIR}/ffmpeg)
+# --enable-shared for so libs (if set, --enable-pic is not necessary) #--enable-gnutls
+
+# see https://gist.github.com/omegdadi/6904512c0a948225c81114b1c5acb875
+# config with everything
+# set(FFMPEG_CONFIG --enable-shared --enable-libaom --enable-gpl --enable-gnutls --enable-libass --enable-libfdk-aac --enable-libfreetype --enable-libmp3lame --enable-libopus --enable-libsvtav1 --enable-libdav1d --enable-libvorbis --enable-libvpx --enable-libx264 --enable-libx265 --enable-nonfree)
+# potentially enable  --enable-libass  --enable-libfreetype => subtitles |  --enable-libdav1d av1 decode | --enable-libopus opus audio | --enable-libvpx VP8/VP9 |  --enable-libfdk-aac AAC Audio |  --enable-libvorbis  vorbis audio |  --enable-libmp3lame mp3 audio
+
+set(FFMPEG_CONFIG --enable-gpl --enable-libx264 --enable-libx265 --enable-nonfree --disable-vdpau --disable-vaapi
+        --enable-rpath --disable-sdl2)
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     message("Enable ffmpeg debug build")
     set(FFMPEG_CONFIG ${FFMPEG_CONFIG} --enable-debug=3 --disable-optimizations --disable-stripping)
@@ -33,16 +183,21 @@ ExternalProject_Add(
         GIT_REPOSITORY https://github.com/FFmpeg/FFmpeg.git
         GIT_TAG release/8.0
         GIT_SHALLOW true
-        PREFIX ${CMAKE_BINARY_DIR}/ffmpeg
-        INSTALL_DIR ${FFMPEG_BUILD}
+        PREFIX ${FFMPEG_DIR}
+        INSTALL_DIR ${LIBS_INSTALL}
         #        CONFIGURE_COMMAND echo <INSTALL_DIR>
-        CONFIGURE_COMMAND cd <SOURCE_DIR> && ./configure --prefix=<INSTALL_DIR> ${FFMPEG_CONFIG}
+        CONFIGURE_COMMAND
+        cd <SOURCE_DIR> &&
+        ${CMAKE_COMMAND} -E env PKG_CONFIG_PATH=${LIBS_LINK}/pkgconfig
+        ${CMAKE_COMMAND} -E env CFLAGS=-I${LIBS_INCLUDE}
+        ${CMAKE_COMMAND} -E env LDFLAGS=-L${LIBS_LINK}
+        ./configure --prefix=<INSTALL_DIR> ${FFMPEG_CONFIG}
         BUILD_COMMAND make -j -C <SOURCE_DIR>
         INSTALL_COMMAND make -C <SOURCE_DIR> install
 )
 
 
-message("FFMPEG will be installed into ${FFMPEG_BUILD}")
+message("FFMPEG will be installed into ${FFMPEG_INSTALL}")
 
 #add_library(ForexConnect SHARED IMPORTED)
 #set_target_properties(ForexConnect PROPERTIES IMPORTED_LOCATION ${FXCM_LIB_DIR}/libForexConnect.so)
@@ -109,12 +264,25 @@ if (DOC_XML)
 endif ()
 set(GODOT_PROJECT_BINARY_DIR "${PROJECT_SOURCE_DIR}/${GODOT_PROJECT_DIR}/bin/${GODOTCPP_PLATFORM}")
 
-target_include_directories(${LIBNAME} PRIVATE ${FFMPEG_BUILD}/include) #${CMAKE_BINARY_DIR}/ffmpeg/src/ffmpeg
-#target_link_directories(${LIBNAME} PRIVATE ${FFMPEG_BUILD}/lib)
-target_link_directories(${LIBNAME} PRIVATE ${GODOT_PROJECT_BINARY_DIR})
-target_link_libraries(${LIBNAME} PRIVATE godot-cpp vulkan avfilter swscale swresample avformat avcodec avdevice avutil)
+target_include_directories(${LIBNAME} PRIVATE ${LIBS_INCLUDE}) #${CMAKE_BINARY_DIR}/ffmpeg/src/ffmpeg
+target_link_directories(${LIBNAME} PRIVATE ${LIBS_LINK})
+#target_link_directories(${LIBNAME} PUBLIC bin/linux)
+#target_link_directories(${LIBNAME} PRIVATE ${GODOT_PROJECT_BINARY_DIR})
+#set_target_properties(${LIBNAME} PROPERTIES
+#        BUILD_WITH_INSTALL_RPATH FALSE
+#        LINK_FLAGS "-Wl,-rpath,.")
+target_link_libraries(${LIBNAME} PRIVATE godot-cpp
+        libavformat.a libavcodec.a libavdevice.a libavutil.a libavfilter.a libswscale.a swresample.a
+        x264.a x265.a lzma.a bz2_static.a z.a
+        libva.a libva-drm.a libva-glx.a libva-wayland.a libva-x11.a
+        libxcb.a libxcb-dri3.a
+        #        xcb va-drm va-x11 va xcb-dri3
+        # system libs
+        drm Xext vdpau vulkan Xfixes X11-xcb numa
+        #        vulkan x264 x265 vpx lzma bz2 aom va fdk-aac mp3lame dav1d opus GLX_mesa va-drm va-x11 SvtAv1Enc vdpau vorbis vorbisenc
+)
 
-#target_link_options(${LIBNAME} PUBLIC -Wl,-rpath .bin/linux)
+#target_link_options(${LIBNAME} PUBLIC -Wl,-rpath ./bin/linux)
 
 set_target_properties(${LIBNAME}
         PROPERTIES
@@ -125,9 +293,9 @@ set_target_properties(${LIBNAME}
         OUTPUT_NAME "${LIBNAME}${GODOTCPP_SUFFIX}"
 )
 
-add_custom_command(TARGET ${LIBNAME} PRE_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy "${FFMPEG_BUILD}/lib/*.so*" "${GODOT_PROJECT_BINARY_DIR}/"
-)
+#add_custom_command(TARGET ${LIBNAME} PRE_BUILD
+#        COMMAND ${CMAKE_COMMAND} -E copy "${FFMPEG_INSTALL}/lib/*.so*" "${GODOT_PROJECT_BINARY_DIR}/"
+#)
 add_custom_command(TARGET ${LIBNAME} POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:${LIBNAME}>" "${GODOT_PROJECT_BINARY_DIR}/$<TARGET_FILE_NAME:${LIBNAME}>"
 )
@@ -135,7 +303,7 @@ add_custom_command(TARGET ${LIBNAME} POST_BUILD
 
 #function(copylibs)
 #    file(GLOB FFMPEG_LIBS
-#            "${FFMPEG_BUILD}/lib/*.so*"
+#            "${FFMPEG_INSTALL}/lib/*.so*"
 #    )
 #    file(COPY "$<TARGET_FILE:${LIBNAME}>" DESTINATION "${GODOT_PROJECT_BINARY_DIR}/$<TARGET_FILE_NAME:${LIBNAME}>" )
 #    message(${FFMPEG_LIBS})
