@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include "packet_decoder.h"
+
 #include <array>
 
 #include "godot_cpp/classes/rendering_device.hpp"
@@ -46,5 +48,5 @@ public:
 	[[nodiscard]] godot::Ref<godot::Texture2DRD> get_texture() const {
 		return texture;
 	}
-	void update(AVFrame *frame);
+	void update(AVFramePtr frame);
 };

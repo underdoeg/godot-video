@@ -263,7 +263,7 @@ bool GAVTexture::setup_pipeline(AVPixelFormat pixel_format) {
 	return true;
 }
 
-void GAVTexture::update(AVFrame *frame) {
+void GAVTexture::update(AVFramePtr frame) {
 	// UtilityFunctions::print("update texture");
 
 	auto *hw_dev = reinterpret_cast<AVHWDeviceContext *>(codec_ctx->hw_device_ctx->data);

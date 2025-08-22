@@ -207,6 +207,7 @@ FetchContent_Declare(
         godot-cpp
         GIT_REPOSITORY https://github.com/godotengine/godot-cpp.git
         GIT_TAG 1421ba26ad045fb23b35ad7360cf5b2f1de55738
+#        GIT_TAG 4.4
 )
 FetchContent_MakeAvailable(godot-cpp)
 
@@ -243,6 +244,8 @@ add_library(${LIBNAME} SHARED
         src/gav_texture.h
         src/shaders.h
         src/shaders.cpp
+        src/packet_decoder.cpp
+        src/packet_decoder.h
 )
 
 #target_sources(${LIBNAME}
