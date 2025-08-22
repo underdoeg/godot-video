@@ -344,6 +344,13 @@ bool GAVPlayback::init_audio() {
 	}
 
 	frame_handlers.emplace(audio_stream_index, PacketDecoder(audio_codec_ctx, [&](auto frame) {
+
+		// TODO, do we need tiem checks for audio?
+		auto time = frame_time(frame);
+		if (time > Clock::now()) {
+			return false;
+		}
+
 		audio_frame->nb_samples = frame->nb_samples;
 		// std::cout << frame->sample_rate << " - " << audio_frame->sample_rate << std::endl;
 		// std::cout << frame->sample_rate << " - " << audio_frame->sample_rate << std::endl;
@@ -363,14 +370,10 @@ bool GAVPlayback::init_audio() {
 		PackedFloat32Array buff;
 		int linesize = 0;
 		const auto byte_size = av_samples_get_buffer_size(&linesize, audio_frame->ch_layout.nb_channels, audio_frame->nb_samples, static_cast<AVSampleFormat>(frame->format), 0);
-		UtilityFunctions::print(byte_size, " -- ", audio_frame->nb_samples, " -- ", audio_frame->ch_layout.nb_channels);
-
-		UtilityFunctions::print(linesize);
 		buff.resize(byte_size / sizeof(float));
 		memcpy(buff.ptrw(), audio_frame->data[0], byte_size);
 		mix_audio(audio_frame->nb_samples, buff, 0);
-		return true;
-	}, 20));
+		return true; }, 10));
 
 	audio_ctx_ready = true;
 	return true;
