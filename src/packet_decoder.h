@@ -37,7 +37,7 @@ class PacketDecoder {
 public:
 	explicit PacketDecoder(AVCodecContext *ctx, FrameHandler handler, int max_frames=7);
 
-	bool is_ready() const;
+	[[nodiscard]] bool is_ready() const;
 
 	void handle(AVPacket *pkt);
 	void process();

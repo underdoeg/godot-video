@@ -44,9 +44,12 @@ ExternalProject_Add(
         x265
         GIT_REPOSITORY https://phwhitfield@bitbucket.org/multicoreware/x265_git.git
         GIT_TAG master
-        GIT_SHALLOW true
+#        GIT_SHALLOW true
         PREFIX ${X265_DIR}
         INSTALL_DIR ${LIBS_INSTALL}
+#        CONFIGURE_COMMAND cd <SOURCE_DIR>/build/linux && ./make-Makefiles.bash && ./configure --prefix=<INSTALL_DIR> --enable-static --disable-cli --enable-pic
+#        BUILD_COMMAND make -j -C <SOURCE_DIR>
+#        INSTALL_COMMAND make -C <SOURCE_DIR> install
         CMAKE_ARGS
         -DCMAKE_INSTALL_PREFIX=${LIBS_INSTALL}
         -DCMAKE_PREFIX_PATH=${XZ_DIR}
