@@ -54,14 +54,14 @@ visible = false
 layout_mode = 0
 offset_left = 962.0
 offset_top = 542.0
-offset_right = 1919.9994
-offset_bottom = 1079.9995
+offset_right = 1920.0
+offset_bottom = 1080.0
 size_flags_horizontal = 3
 size_flags_vertical = 3
 expand_mode = 2
 
 [node name="Timer" type="Timer" parent="."]
-wait_time = 7.000000000000001
+wait_time = 7.0
 autostart = true
 
 [connection signal="timeout" from="Timer" to="." method="_on_timer_timeout"]
