@@ -148,9 +148,9 @@ RID nv12(RenderingDevice *rd, Vector2i size) {
 			//float v = texture(V, uv).b;
 
 			mat3 color_matrix = mat3(
-				1,   0,       1.402,
+				1,   0,       1.403,
 				1,  -0.344,  -0.714,
-				1,   1.772,   0
+				1,   1.770,   0
 			);
 
 			//mat3 color_matrix = mat3(

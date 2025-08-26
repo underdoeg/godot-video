@@ -377,7 +377,8 @@ bool GAVPlayback::init_audio() {
 		return false;
 	}
 	UtilityFunctions::print("Audio Codec: ", codec_name);
-	std::cout << "Audio Bitrate: " << codecpar->bit_rate << std::endl;
+	// std::cout << "Audio Bitrate: " << codecpar->bit_rate << std::endl;
+
 
 	audio_codec_ctx = avcodec_alloc_context3(nullptr);
 	if (!audio_codec_ctx) {

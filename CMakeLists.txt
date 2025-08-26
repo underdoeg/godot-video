@@ -107,19 +107,19 @@ ExternalProject_Add(
 ## WE need shared and static libs, static for final link, shared to have ffmpeg autodetect in configure work
 
 # LIBVA
-set(LIBVA_DIR ${CMAKE_BINARY_DIR}/libva)
-ExternalProject_Add(
-        libva
-        GIT_REPOSITORY https://github.com/intel/libva.git
-        GIT_TAG 2.22.0
-        GIT_SHALLOW true
-        PREFIX ${LIBVA_DIR}
-        INSTALL_DIR ${LIBS_INSTALL}
-        #        CONFIGURE_COMMAND echo <INSTALL_DIR>
-        CONFIGURE_COMMAND cd <SOURCE_DIR> && ./autogen.sh --prefix=<INSTALL_DIR> --libdir=<INSTALL_DIR>/lib --enable-static --enable-pic
-        BUILD_COMMAND make -j -C <SOURCE_DIR>
-        INSTALL_COMMAND make -C <SOURCE_DIR> install
-)
+#set(LIBVA_DIR ${CMAKE_BINARY_DIR}/libva)
+#ExternalProject_Add(
+#        libva
+#        GIT_REPOSITORY https://github.com/intel/libva.git
+#        GIT_TAG 2.22.0
+#        GIT_SHALLOW true
+#        PREFIX ${LIBVA_DIR}
+#        INSTALL_DIR ${LIBS_INSTALL}
+#        #        CONFIGURE_COMMAND echo <INSTALL_DIR>
+#        CONFIGURE_COMMAND cd <SOURCE_DIR> && ./autogen.sh --prefix=<INSTALL_DIR> --libdir=<INSTALL_DIR>/lib --enable-static --enable-pic
+#        BUILD_COMMAND make -j -C <SOURCE_DIR>
+#        INSTALL_COMMAND make -C <SOURCE_DIR> install
+#)
 
 # LIBXCB
 set(LIBXCB_DIR_STATIC ${CMAKE_BINARY_DIR}/libxcb-static)
@@ -287,7 +287,7 @@ if (DOC_XML)
 endif ()
 set(GODOT_PROJECT_BINARY_DIR "${PROJECT_SOURCE_DIR}/${GODOT_PROJECT_DIR}/bin/${GODOTCPP_PLATFORM}")
 
-set(USE_SYSTEM_FFMPEG ON)
+set(USE_SYSTEM_FFMPEG OFF)
 
 if (USE_SYSTEM_FFMPEG)
     message("using system ffmpeg")
@@ -297,7 +297,7 @@ if (USE_SYSTEM_FFMPEG)
             va va-drm va-x11 va-wayland xcb-dri3
             drm Xext vdpau vulkan Xfixes X11-xcb
             avformat avcodec avdevice avutil avfilter swscale swresample
-            vulkan vpx aom va fdk-aac mp3lame dav1d opus  va-drm va-x11 vdpau vorbis vorbisenc numa
+            vulkan vpx aom va fdk-aac mp3lame dav1d opus va-drm va-x11 vdpau vorbis vorbisenc numa
             x264 x265 lzma bz2
     )
 else ()
@@ -307,16 +307,11 @@ else ()
     target_link_libraries(${LIBNAME} PRIVATE godot-cpp
             libavformat.a libavcodec.a libavdevice.a libavutil.a libavfilter.a libswscale.a swresample.a
             x264.a x265.a lzma.a bz2_static.a z.a
-            libva.a libva-drm.a libva-glx.a libva-wayland.a libva-x11.a
+#            libva.a libva-drm.a libva-glx.a libva-wayland.a libva-x11.a
             libxcb.a libxcb-dri3.a
-
+            va va-drm va-x11 va-wayland xcb-dri3
             # link system libva, no idea how to use the static libs platform independent
-            #        va va-drm va-x11 va-wayland xcb-dri3
-            #        drm Xext vdpau vulkan Xfixes X11-xcb
-            #        avformat avcodec avdevice avutil avfilter swscale swresample
             vulkan vpx aom va fdk-aac mp3lame dav1d opus GLX_mesa va-drm va-x11 vdpau vorbis vorbisenc numa
-            #        x264 x265 lzma bz2
-            x264.a x265.a lzma.a bz2_static.a z.a
     )
 endif ()
 
