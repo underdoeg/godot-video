@@ -10,7 +10,7 @@ using namespace godot;
 
 VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vk_proc_addr(
 		VkInstance instance,
-		const char *pName){
+		const char *pName) {
 	auto ret = vkGetInstanceProcAddr(instance, pName);
 	UtilityFunctions::print("get_it: ", pName, " - ", ret != nullptr);
 	return ret;
@@ -30,7 +30,6 @@ bool av_vk_video_supported(godot::RenderingDevice *rd) {
 	}
 	check = 1;
 	return true;
-
 }
 
 bool av_vk_ctx_setup(AVVulkanDeviceContext *ctx, godot::RenderingDevice *rd) {
@@ -169,7 +168,6 @@ bool av_vk_ctx_setup(AVVulkanDeviceContext *ctx, godot::RenderingDevice *rd) {
 			device_extension_names.push_back(extension.extensionName);
 		}
 
-
 		ctx->enabled_dev_extensions = device_extension_names.ptr();
 
 		ctx->nb_enabled_dev_extensions = device_extension_names.size();
@@ -178,99 +176,97 @@ bool av_vk_ctx_setup(AVVulkanDeviceContext *ctx, godot::RenderingDevice *rd) {
 		// }
 	}
 
-	if (LIBAVUTIL_VERSION_MINOR >= 8) {
-		{
-			ctx->nb_qf = 0;
+#if (LIBAVUTIL_VERSION_MINOR >= 8)
+	{
+		ctx->nb_qf = 0;
 
-			// uint32_t queue_family_properties_count = 0;
+		// uint32_t queue_family_properties_count = 0;
 
-			// auto props = Vector<VkQueueFamilyProperties2>();
-			// props.resize(32);
-			// dev_props(ctx->phys_dev, &queue_family_properties_count, nullptr);
+		// auto props = Vector<VkQueueFamilyProperties2>();
+		// props.resize(32);
+		// dev_props(ctx->phys_dev, &queue_family_properties_count, nullptr);
 
-			// if (queue_family_properties_count > 0) {
-			// UtilityFunctions::print("found potential queue families:", queue_family_properties_count);
-			// props.resize(queue_family_properties_count);
+		// if (queue_family_properties_count > 0) {
+		// UtilityFunctions::print("found potential queue families:", queue_family_properties_count);
+		// props.resize(queue_family_properties_count);
 
-			auto dev_props = reinterpret_cast<PFN_vkGetPhysicalDeviceQueueFamilyProperties>(vk_proc_addr(ctx->inst, "vkGetPhysicalDeviceQueueFamilyProperties"));
+		auto dev_props = reinterpret_cast<PFN_vkGetPhysicalDeviceQueueFamilyProperties>(vk_proc_addr(ctx->inst, "vkGetPhysicalDeviceQueueFamilyProperties"));
 
-			uint32_t queueFamilyCount = 0;
-			dev_props(ctx->phys_dev, &queueFamilyCount, NULL);
-			std::vector<VkQueueFamilyProperties> familyProperties(queueFamilyCount);
-			dev_props(ctx->phys_dev, &queueFamilyCount, familyProperties.data());
+		uint32_t queueFamilyCount = 0;
+		dev_props(ctx->phys_dev, &queueFamilyCount, NULL);
+		std::vector<VkQueueFamilyProperties> familyProperties(queueFamilyCount);
+		dev_props(ctx->phys_dev, &queueFamilyCount, familyProperties.data());
 
-			// dev_props(ctx->phys_dev, &queue_family_properties_count, nullptr);
-			//
-			// UtilityFunctions::print("num queue families: ", queue_family_properties_count);
-			//
-			// if (!dev_props) {
-			// 	UtilityFunctions::printerr("vkGetPhysicalDeviceQueueFamilyProperties2 failed");
-			// 	return false;
-			// }
-			// Vector<VkQueueFamilyProperties2> props;
-			// props.resize(queue_family_properties_count);
-			// auto dev_props2 = reinterpret_cast<PFN_vkGetPhysicalDeviceQueueFamilyProperties2>(vk_proc_addr(ctx->inst, "vkGetPhysicalDeviceProperties2"));
-			// dev_props2(ctx->phys_dev, &queue_family_properties_count, props.ptrw());
+		// dev_props(ctx->phys_dev, &queue_family_properties_count, nullptr);
+		//
+		// UtilityFunctions::print("num queue families: ", queue_family_properties_count);
+		//
+		// if (!dev_props) {
+		// 	UtilityFunctions::printerr("vkGetPhysicalDeviceQueueFamilyProperties2 failed");
+		// 	return false;
+		// }
+		// Vector<VkQueueFamilyProperties2> props;
+		// props.resize(queue_family_properties_count);
+		// auto dev_props2 = reinterpret_cast<PFN_vkGetPhysicalDeviceQueueFamilyProperties2>(vk_proc_addr(ctx->inst, "vkGetPhysicalDeviceProperties2"));
+		// dev_props2(ctx->phys_dev, &queue_family_properties_count, props.ptrw());
 
-			for (auto j = 0; j < queueFamilyCount; j++) {
-				const auto v = familyProperties[j];
-				// if(v.queueFlags & VK_QUEUE_VIDEO_DECODE_BIT_KHR) {
+		for (auto j = 0; j < queueFamilyCount; j++) {
+			const auto v = familyProperties[j];
+			// if(v.queueFlags & VK_QUEUE_VIDEO_DECODE_BIT_KHR) {
 
-				ctx->qf[ctx->nb_qf] = {
-					j,
-					1,
+			ctx->qf[ctx->nb_qf] = {
+				j,
+				1,
 
-					// flags taken from here:
-					// https://github.com/godotengine/godot/blob/2d113cc224cb9be07866d003819fcef2226a52ea/drivers/vulkan/rendering_device_driver_vulkan.cpp#L1050
-					VkQueueFlagBits(v.queueFlags),
+				// flags taken from here:
+				// https://github.com/godotengine/godot/blob/2d113cc224cb9be07866d003819fcef2226a52ea/drivers/vulkan/rendering_device_driver_vulkan.cpp#L1050
+				VkQueueFlagBits(v.queueFlags),
 
-	#ifdef VK_KHR_VIDEO_DECODE_AV1_EXTENSION_NAME
-					VkVideoCodecOperationFlagBitsKHR(
-							VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR |
-							VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_KHR |
-							// VK_VIDEO_CODEC_OPERATION_DECODE_VP9_BIT_KHR |
-							VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR)
+#ifdef VK_KHR_VIDEO_DECODE_AV1_EXTENSION_NAME
+				VkVideoCodecOperationFlagBitsKHR(
+						VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR |
+						VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_KHR |
+						// VK_VIDEO_CODEC_OPERATION_DECODE_VP9_BIT_KHR |
+						VK_VIDEO_CODEC_OPERATION_DECODE_AV1_BIT_KHR)
 
-	#else
-					VkVideoCodecOperationFlagBitsKHR(
-							VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR |
-							VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_KHR)
-	#endif
-				};
-				ctx->nb_qf += 1;
-				// vk->nb
-				// }
-			}
-
-			if (ctx->nb_qf == 0) {
-				UtilityFunctions::print("No queue family for video decoding found");
-				return false;
-			}
-
-			// UtilityFunctions::print("found queue families:", ctx->nb_qf);
-			// for (auto i = 0; i < ctx->nb_qf; i++) {
-			// UtilityFunctions::print("QF: ", ctx->qf[i].idx, " -- ", ctx->qf[i].flags);
+#else
+				VkVideoCodecOperationFlagBitsKHR(
+						VK_VIDEO_CODEC_OPERATION_DECODE_H264_BIT_KHR |
+						VK_VIDEO_CODEC_OPERATION_DECODE_H265_BIT_KHR)
+#endif
+			};
+			ctx->nb_qf += 1;
+			// vk->nb
 			// }
 		}
 
-		// TODO locking mechanism
-		ctx->lock_queue = [](AVHWDeviceContext *ctx, uint32_t, uint32_t) {
-			// UtilityFunctions::print("locking queue");
-			// auto *self = static_cast<Impl *>(ctx->user_opaque);
-			// self->device->external_queue_lock();
-		};
+		if (ctx->nb_qf == 0) {
+			UtilityFunctions::print("No queue family for video decoding found");
+			return false;
+		}
 
-		ctx->unlock_queue = [](AVHWDeviceContext *ctx, uint32_t, uint32_t) {
-			// auto *self = static_cast<Impl *>(ctx->user_opaque);
-			// UtilityFunctions::print("unlocking queue");
-			// self->device->external_queue_unlock();
-		};
-		return true;
-	}else {
-		return false;
+		// UtilityFunctions::print("found queue families:", ctx->nb_qf);
+		// for (auto i = 0; i < ctx->nb_qf; i++) {
+		// UtilityFunctions::print("QF: ", ctx->qf[i].idx, " -- ", ctx->qf[i].flags);
+		// }
 	}
 
+	// TODO locking mechanism
+	ctx->lock_queue = [](AVHWDeviceContext *ctx, uint32_t, uint32_t) {
+		// UtilityFunctions::print("locking queue");
+		// auto *self = static_cast<Impl *>(ctx->user_opaque);
+		// self->device->external_queue_lock();
+	};
 
+	ctx->unlock_queue = [](AVHWDeviceContext *ctx, uint32_t, uint32_t) {
+		// auto *self = static_cast<Impl *>(ctx->user_opaque);
+		// UtilityFunctions::print("unlocking queue");
+		// self->device->external_queue_unlock();
+	};
+	return true;
+#else
+	return false;
+#endif
 }
 
 AVBufferRef *av_vk_create_device(godot::RenderingDevice *rd) {
