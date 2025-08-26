@@ -35,9 +35,12 @@ class PacketDecoder {
 	int max_frames = 5;
 
 public:
-	explicit PacketDecoder(AVCodecContext *ctx, FrameHandler handler, int max_frames=7);
+	explicit PacketDecoder(AVCodecContext *ctx, FrameHandler handler, int max_frames = 7);
 
 	[[nodiscard]] bool is_ready() const;
+	[[nodiscard]] bool queue_empty() const {
+		return frames.empty();
+	}
 
 	void handle(AVPacket *pkt);
 	void process();

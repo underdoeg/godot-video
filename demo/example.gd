@@ -6,8 +6,10 @@ extends Control
 func _ready() -> void:
 	dynamic_video.file = "res://input.mp4"
 #
-	#%video_dynamic.stream = dynamic_video
-	#%video_dynamic.play()
+	%video_dynamic.stream = dynamic_video
+	%video_dynamic.play()
+	
+	dynamic_video.finished.connect(func():print("done"))
 	
 	%video_tex.texture = %video.get_video_texture()
 	%video_tex2.texture = %video.get_video_texture()

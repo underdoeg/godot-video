@@ -110,4 +110,6 @@ public:
 	[[nodiscard]] int32_t _get_mix_rate() const override;
 
 	bool load(const godot::String &file_path);
+
+	std::function<void()> finished_callback;
 };

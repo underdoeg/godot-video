@@ -32,7 +32,9 @@ RenderingDevice *GAVPlayback::decode_rd = nullptr;
 RenderingDevice *GAVPlayback::conversion_rd = nullptr;
 
 void GAVPlayback::_bind_methods() {
+	ADD_SIGNAL(MethodInfo("finished"));
 }
+
 GAVPlayback::~GAVPlayback() {
 	GAVPlayback::_stop();
 	av_packet_unref(pkt);
@@ -379,7 +381,6 @@ bool GAVPlayback::init_audio() {
 	UtilityFunctions::print("Audio Codec: ", codec_name);
 	// std::cout << "Audio Bitrate: " << codecpar->bit_rate << std::endl;
 
-
 	audio_codec_ctx = avcodec_alloc_context3(nullptr);
 	if (!audio_codec_ctx) {
 		UtilityFunctions::printerr("avcodec_alloc_context3 failed for audio");
@@ -452,8 +453,8 @@ bool GAVPlayback::init_audio() {
 
 		// // copy data
 		PackedFloat32Array buff;
-		int linesize = 0;
-		const auto byte_size = av_samples_get_buffer_size(&linesize, audio_frame->ch_layout.nb_channels, audio_frame->nb_samples, static_cast<AVSampleFormat>(frame->format), 0);
+		int line_size = 0;
+		const auto byte_size = av_samples_get_buffer_size(&line_size, audio_frame->ch_layout.nb_channels, audio_frame->nb_samples, static_cast<AVSampleFormat>(frame->format), 0);
 		buff.resize(byte_size / sizeof(float));
 		memcpy(buff.ptrw(), audio_frame->data[0], byte_size);
 		mix_audio(audio_frame->nb_samples, buff, 0);
@@ -522,6 +523,24 @@ void GAVPlayback::_update(double p_delta) {
 			texture.update_from_hw(video_frame_to_show);
 		}
 		video_frame_to_show.reset();
+	}
+
+	if (decode_is_done) {
+		// check if all frames have been displayed
+		bool all_done = true;
+		for (auto handler : frame_handlers) {
+			if (handler.second.queue_empty()) {
+				all_done = false;
+				break;
+			}
+		}
+		if (all_done) {
+			set_state(STOPPED);
+			if (finished_callback) {
+				finished_callback();
+			}
+			emit_signal("finished");
+		}
 	}
 }
 bool GAVPlayback::_is_playing() const {
