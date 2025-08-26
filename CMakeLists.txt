@@ -297,7 +297,7 @@ if (USE_SYSTEM_FFMPEG)
             va va-drm va-x11 va-wayland xcb-dri3
             drm Xext vdpau vulkan Xfixes X11-xcb
             avformat avcodec avdevice avutil avfilter swscale swresample
-            vulkan vpx aom va fdk-aac mp3lame dav1d opus GLX_mesa va-drm va-x11 vdpau vorbis vorbisenc numa
+            vulkan vpx aom va fdk-aac mp3lame dav1d opus  va-drm va-x11 vdpau vorbis vorbisenc numa
             x264 x265 lzma bz2
     )
 else ()
