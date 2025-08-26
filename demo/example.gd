@@ -4,7 +4,7 @@ extends Control
 @onready var dynamic_video:GAVStream = GAVStream.new()
 
 func _ready() -> void:
-	dynamic_video.file = "res://input.mp4"
+	dynamic_video.file = "res://4k_h264_30p.mp4"
 #
 	%video_dynamic.stream = dynamic_video
 	%video_dynamic.play()
@@ -13,6 +13,9 @@ func _ready() -> void:
 	
 	%video_tex.texture = %video.get_video_texture()
 	%video_tex2.texture = %video.get_video_texture()
+		
+	%video_dynamic2.stream = dynamic_video
+	%video_dynamic2.play()
 	
 	_on_timer_timeout()
 

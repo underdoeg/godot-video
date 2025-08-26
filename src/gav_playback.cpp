@@ -167,7 +167,9 @@ bool GAVPlayback::init_video() {
 	if (!av_vk_video_supported(decode_rd)) {
 		// this is a dummy check ATM, it will always return false, needs godot with video extension loaded
 		// auto detect v dpau or vaapi /nvidia or intel
-		if (conversion_rd->get_device_vendor_name().to_lower() == "nvidia") {
+		const auto device_vendor = conversion_rd->get_device_vendor_name().to_lower();
+		UtilityFunctions::print("Device vendopr ", device_vendor);
+		if (device_vendor == "nvidia" || device_vendor == "amd") {
 			hw_preferred = AV_HWDEVICE_TYPE_VDPAU;
 		} else {
 			hw_preferred = AV_HWDEVICE_TYPE_VAAPI;
