@@ -28,7 +28,7 @@ message("libraries will bi installed into ${LIBS_INSTALL}")
 # X264
 set(X264_DIR ${CMAKE_BINARY_DIR}/x264)
 ExternalProject_Add(
-        x264
+        libx264
         GIT_REPOSITORY https://code.videolan.org/videolan/x264.git
         GIT_TAG master
         GIT_SHALLOW true
@@ -42,7 +42,7 @@ ExternalProject_Add(
 
 set(X265_DIR ${CMAKE_BINARY_DIR}/x265)
 ExternalProject_Add(
-        x265
+        libx265
         GIT_REPOSITORY https://phwhitfield@bitbucket.org/multicoreware/x265_git.git
         GIT_TAG master
         #        GIT_SHALLOW true
@@ -287,27 +287,36 @@ if (DOC_XML)
 endif ()
 set(GODOT_PROJECT_BINARY_DIR "${PROJECT_SOURCE_DIR}/${GODOT_PROJECT_DIR}/bin/${GODOTCPP_PLATFORM}")
 
-target_include_directories(${LIBNAME} PRIVATE ${LIBS_INCLUDE}) #${CMAKE_BINARY_DIR}/ffmpeg/src/ffmpeg
-target_link_directories(${LIBNAME} PRIVATE ${LIBS_LINK})
-#target_link_directories(${LIBNAME} PUBLIC bin/linux)
-#target_link_directories(${LIBNAME} PRIVATE ${GODOT_PROJECT_BINARY_DIR})
-#set_target_properties(${LIBNAME} PROPERTIES
-#        BUILD_WITH_INSTALL_RPATH FALSE
-#        LINK_FLAGS "-Wl,-rpath,.")
-target_link_libraries(${LIBNAME} PRIVATE godot-cpp
-        libavformat.a libavcodec.a libavdevice.a libavutil.a libavfilter.a libswscale.a swresample.a
+set(USE_SYSTEM_FFMPEG ON)
 
-        x264.a x265.a lzma.a bz2_static.a z.a
-#        libva.a libva-drm.a libva-glx.a libva-wayland.a libva-x11.a
-        libxcb.a libxcb-dri3.a
+if (USE_SYSTEM_FFMPEG)
+    target_include_directories(${LIBNAME} PRIVATE ${LIBS_INCLUDE}) #${CMAKE_BINARY_DIR}/ffmpeg/src/ffmpeg
+    target_link_directories(${LIBNAME} PRIVATE ${LIBS_LINK})
+    target_link_libraries(${LIBNAME} PRIVATE godot-cpp
+            va va-drm va-x11 va-wayland xcb-dri3
+            drm Xext vdpau vulkan Xfixes X11-xcb
+            avformat avcodec avdevice avutil avfilter swscale swresample
+            vulkan vpx aom va fdk-aac mp3lame dav1d opus GLX_mesa va-drm va-x11 vdpau vorbis vorbisenc numa
+            x264 x265 lzma bz2
+    )
+else ()
+    target_include_directories(${LIBNAME} PRIVATE ${LIBS_INCLUDE}) #${CMAKE_BINARY_DIR}/ffmpeg/src/ffmpeg
+    target_link_directories(${LIBNAME} PRIVATE ${LIBS_LINK})
+    target_link_libraries(${LIBNAME} PRIVATE godot-cpp
+            libavformat.a libavcodec.a libavdevice.a libavutil.a libavfilter.a libswscale.a swresample.a
+            x264.a x265.a lzma.a bz2_static.a z.a
+            libva.a libva-drm.a libva-glx.a libva-wayland.a libva-x11.a
+            libxcb.a libxcb-dri3.a
 
-        # link system libva, no idea how to use the static libs platform independent
-        va va-drm va-x11 va-wayland xcb-dri3
-        drm Xext vdpau vulkan Xfixes X11-xcb numa
-        #        avformat avcodec avdevice avutil avfilter swscale swresample
-        #        vulkan vpx  aom va fdk-aac mp3lame dav1d opus GLX_mesa va-drm va-x11 SvtAv1Enc vdpau vorbis vorbisenc
-        #        x264 x265  lzma bz2
-)
+            # link system libva, no idea how to use the static libs platform independent
+            #        va va-drm va-x11 va-wayland xcb-dri3
+            #        drm Xext vdpau vulkan Xfixes X11-xcb
+            #        avformat avcodec avdevice avutil avfilter swscale swresample
+            vulkan vpx aom va fdk-aac mp3lame dav1d opus GLX_mesa va-drm va-x11 vdpau vorbis vorbisenc numa
+            #        x264 x265 lzma bz2
+            x264.a x265.a lzma.a bz2_static.a z.a
+    )
+endif ()
 
 #target_link_options(${LIBNAME} PUBLIC -Wl,-rpath ./bin/linux)
 

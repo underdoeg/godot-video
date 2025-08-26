@@ -165,9 +165,9 @@ bool GAVPlayback::init_video() {
 	if (!av_vk_video_supported(decode_rd)) {
 		// this is a dummy check ATM, it will always return false, needs godot with video extension loaded
 		// auto detect v dpau or vaapi /nvidia or intel
-		if(conversion_rd->get_device_vendor_name().to_lower()=="nvidia") {
+		if (conversion_rd->get_device_vendor_name().to_lower() == "nvidia") {
 			hw_preferred = AV_HWDEVICE_TYPE_VDPAU;
-		}else {
+		} else {
 			hw_preferred = AV_HWDEVICE_TYPE_VAAPI;
 		}
 	}
@@ -239,7 +239,7 @@ bool GAVPlayback::init_video() {
 			video_codec_ctx->hw_device_ctx = nullptr;
 			return false;
 		}
-		video_codec_ctx->pix_fmt = conf->pix_fmt;
+		// video_codec_ctx->pix_fmt = conf->pix_fmt;
 		UtilityFunctions::print("hw device created");
 		return true;
 	};
@@ -255,6 +255,10 @@ bool GAVPlayback::init_video() {
 		// accel_config = configs[0];
 		// UtilityFunctions::print("preferred HW device not found ", av_hwdevice_get_type_name(hw_preferred), " - using: ", av_hwdevice_get_type_name(accel_config->device_type));
 		for (const auto &c : configs) {
+			if (c->device_type == hw_preferred) {
+				// already tried above
+				continue;
+			}
 			if (create_hw_dev(c)) {
 				accel_config = c;
 				break;
@@ -304,8 +308,8 @@ bool GAVPlayback::init_video() {
 	ctx->format = accel_config->pix_fmt;
 	ctx->width = codecpar->width;
 	ctx->height = codecpar->height;
-	//ctx->sw_format = video_codec_ctx->sw_pix_fmt;
-	//ctx->sw_format = accel_config->pix_fmt;
+	ctx->sw_format = video_codec_ctx->sw_pix_fmt;
+	// ctx->sw_format = accel_config->pix_fmt;
 	// ctx->sw_format = AV_PIX_FMT_YUV420P;
 
 	// detect valid sw formats
