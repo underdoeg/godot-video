@@ -64,19 +64,6 @@ Ref<Texture2DRD> GAVTexture::setup(AVCodecContext *_ctx, RenderingDevice *_rd) {
 
 	// rd->compute_pipeline_create()
 
-	if (!vkf) {
-		auto v = reinterpret_cast<VkInstance>(rd->get_driver_resource(RenderingDevice::DRIVER_RESOURCE_TOPMOST_OBJECT, {}, 0));
-		vkf = new VkFunctions{
-			reinterpret_cast<PFN_vkBeginCommandBuffer>(vk_proc_addr(v, "vkBeginCommandBuffer")),
-			reinterpret_cast<PFN_vkEndCommandBuffer>(vk_proc_addr(v, "vkEndCommandBuffer")),
-			reinterpret_cast<PFN_vkCmdCopyImage>(vk_proc_addr(v, "vkCmdCopyImage")),
-			reinterpret_cast<PFN_vkCreateCommandPool>(vk_proc_addr(v, "vkCreateCommandPool")),
-			reinterpret_cast<PFN_vkAllocateCommandBuffers>(vk_proc_addr(v, "vkAllocateCommandBuffers")),
-			reinterpret_cast<PFN_vkQueueSubmit>(vk_proc_addr(v, "vkQueueSubmit")),
-			reinterpret_cast<PFN_vkCmdCopyImageToBuffer>(vk_proc_addr(v, "vkCmdCopyImageToBuffer")),
-		};
-	}
-
 	auto *frames = reinterpret_cast<AVHWFramesContext *>(codec_ctx->hw_frames_ctx->data);
 
 	UtilityFunctions::print("reported pixel format on setup is ", av_get_pix_fmt_name(frames->sw_format));
@@ -130,12 +117,13 @@ Ref<Texture2DRD> GAVTexture::setup(AVCodecContext *_ctx, RenderingDevice *_rd) {
 		auto vk_texture = rd->get_driver_resource(RenderingDevice::DRIVER_RESOURCE_TEXTURE, texture_rid, 0);
 		texture_rid_main = rd_main->texture_create_from_extension(RenderingDevice::TEXTURE_TYPE_2D,
 				format->get_format(), format->get_samples(), format->get_usage_bits(),
-				vk_texture, format->get_width(), format->get_height(), format->get_depth(), format->get_array_layers(), format->get_mipmaps());
+				vk_texture, format->get_width(), format->get_height(), format->get_depth(), format->get_array_layers());
+		//argument removed for compatibility with godot 4.4. , format->get_mipmaps());
 		texture->set_texture_rd_rid(texture_rid_main);
 	}
 
 	return texture;
-	// the pixel format  reported might change on the first frame, so we create the shader in update
+	// the pixel format  reported might change on the first frame, so we create the shader in update_from_vulkan
 	// auto pixel_format = frames->sw_format;
 }
 
@@ -148,7 +136,7 @@ bool GAVTexture::setup_pipeline(AVPixelFormat pixel_format) {
 	// auto *vk = static_cast<AVVulkanDeviceContext *>(hw_dev->hwctx);
 	// auto *frames = reinterpret_cast<AVHWFramesContext *>(codec_ctx->hw_frames_ctx->data);
 
-	UtilityFunctions::print("expected pixel format is: ", av_get_pix_fmt_name(pixel_format));
+	UtilityFunctions::print("setup pipeline for pixel format: ", av_get_pix_fmt_name(pixel_format));
 	std::array<int, 4> line_sizes{ 0, 0, 0, 0 };
 	std::array<ptrdiff_t, 4> line_sizes_ptr;
 	std::array<size_t, 4> plane_sizes{ 0, 0, 0, 0 };
@@ -169,7 +157,7 @@ bool GAVTexture::setup_pipeline(AVPixelFormat pixel_format) {
 	// TODO handle color space
 	auto col_space = codec_ctx->colorspace;
 
-	// taken from https://github.com/Themaister/Granite/blob/master/video/ffmpeg_decode.cpp#L742
+	// taken from https://github.com/Themaister/Granite/blob/master/video/ffmpeg_decode.cpp#L777
 	if (col_space == AVCOL_SPC_UNSPECIFIED) {
 		// The common case is when we have an unspecified color space.
 		// We have to deduce the color space based on resolution since NTSC, PAL, HD and UHD all
@@ -199,7 +187,7 @@ bool GAVTexture::setup_pipeline(AVPixelFormat pixel_format) {
 			int h = byte_size / line_size;
 			if (h == 2)
 				h = 1080;
-			plane_infos[i] = { w, h, 1 };
+			plane_infos[i] = { w, h, 1, byte_size };
 
 			Ref<RDTextureFormat> format;
 			format.instantiate();
@@ -236,7 +224,14 @@ bool GAVTexture::setup_pipeline(AVPixelFormat pixel_format) {
 		conversion_shader = nv12(rd, { width, height });
 	} else if (pixel_format == AV_PIX_FMT_YUV420P) {
 		conversion_shader = yuv420(rd, { width, height });
+	} else if (pixel_format == AV_PIX_FMT_P010LE) {
+		conversion_shader = p010le(rd, { width, height });
+	} else if (pixel_format == AV_PIX_FMT_P016LE) {
+		conversion_shader = p016le(rd, { width, height });
+	}else {
+		UtilityFunctions::printerr("unsupported pixel format: ", av_get_pix_fmt_name(pixel_format));
 	}
+
 	if (conversion_shader.is_valid()) {
 		TypedArray<RDUniform> uniforms;
 
@@ -262,13 +257,42 @@ bool GAVTexture::setup_pipeline(AVPixelFormat pixel_format) {
 	pipeline_format = pixel_format;
 	return true;
 }
+void GAVTexture::run_conversion_shader() {
+	// run the conversion shader
+	if (!test_copy && conversion_shader.is_valid() && conversion_shader_uniform_set.is_valid()) {
+		// calculate invocation size
+		auto compute = rd->compute_list_begin();
+		rd->compute_list_bind_compute_pipeline(compute, conversion_pipeline);
+		rd->compute_list_bind_uniform_set(compute, conversion_shader_uniform_set, 0);
+		rd->compute_list_dispatch(compute, std::floor(width / 16), std::floor(height / 16), 1);
+		rd->compute_list_end();
+		if (rd != RenderingServer::get_singleton()->get_rendering_device()) {
+			rd->submit();
+			rd->sync();
+		}
+	} else {
+		UtilityFunctions::printerr("Conversion shader or uniform set is invalid");
+	}
+}
 
-void GAVTexture::update(AVFramePtr frame) {
-	// UtilityFunctions::print("update texture");
+void GAVTexture::update_from_vulkan(AVFramePtr frame) {
+	// UtilityFunctions::print("update_from_vulkan texture");
+	if (!vkf) {
+		auto v = reinterpret_cast<VkInstance>(rd->get_driver_resource(RenderingDevice::DRIVER_RESOURCE_TOPMOST_OBJECT, {}, 0));
+		vkf = new VkFunctions{
+			reinterpret_cast<PFN_vkBeginCommandBuffer>(vk_proc_addr(v, "vkBeginCommandBuffer")),
+			reinterpret_cast<PFN_vkEndCommandBuffer>(vk_proc_addr(v, "vkEndCommandBuffer")),
+			reinterpret_cast<PFN_vkCmdCopyImage>(vk_proc_addr(v, "vkCmdCopyImage")),
+			reinterpret_cast<PFN_vkCreateCommandPool>(vk_proc_addr(v, "vkCreateCommandPool")),
+			reinterpret_cast<PFN_vkAllocateCommandBuffers>(vk_proc_addr(v, "vkAllocateCommandBuffers")),
+			reinterpret_cast<PFN_vkQueueSubmit>(vk_proc_addr(v, "vkQueueSubmit")),
+			reinterpret_cast<PFN_vkCmdCopyImageToBuffer>(vk_proc_addr(v, "vkCmdCopyImageToBuffer")),
+		};
+	}
 
 	auto *hw_dev = reinterpret_cast<AVHWDeviceContext *>(codec_ctx->hw_device_ctx->data);
 	// auto pixel_format = static_cast<AVPixelFormat>(frame->format);
-	// UtilityFunctions::print("update frame format is: ", av_get_pix_fmt_name(pixel_format));
+	// UtilityFunctions::print("update_from_vulkan frame format is: ", av_get_pix_fmt_name(pixel_format));
 	// return;
 
 	// const VkFormat *fmts = nullptr;
@@ -444,19 +468,42 @@ void GAVTexture::update(AVFramePtr frame) {
 
 	release_frames();
 
-	// run the conversion shader
-	if (!test_copy && conversion_shader.is_valid() && conversion_shader_uniform_set.is_valid()) {
-		// calculate invocation size
-		auto compute = rd->compute_list_begin();
-		rd->compute_list_bind_compute_pipeline(compute, conversion_pipeline);
-		rd->compute_list_bind_uniform_set(compute, conversion_shader_uniform_set, 0);
-		rd->compute_list_dispatch(compute, std::floor(width / 16), std::floor(height / 16), 1);
-		rd->compute_list_end();
-		if (rd != RenderingServer::get_singleton()->get_rendering_device()) {
-			rd->submit();
-			rd->sync();
-		}
-	} else {
-		// UtilityFunctions::printerr("Conversion shader or uniform set is invalid");
+	run_conversion_shader();
+}
+void GAVTexture::update_from_sw(AVFramePtr frame) {
+	// if (!setup_pipeline(frames->sw_format)) {
+	// 	UtilityFunctions::printerr("failed to setup render pipeline");
+	// 	return;
+	// }
+	//
+	// for (int i = 0; i < num_planes; i++) {
+	// 	auto img = frame->
+	// }
+}
+
+void GAVTexture::update_from_hw(const AVFramePtr &hw_frame) {
+	auto *frames = reinterpret_cast<AVHWFramesContext *>(codec_ctx->hw_frames_ctx->data);
+
+	auto frame = av_frame_ptr();
+	if (!ff_ok(av_hwframe_transfer_data(frame.get(), hw_frame.get(), 0))) {
+		UtilityFunctions::printerr("Could not transfer_data from hw to sw");
+		return;
 	}
+
+	if (!setup_pipeline(static_cast<enum AVPixelFormat>(frame->format))) { //frames->sw_format)) {
+		UtilityFunctions::printerr("failed to setup render pipeline");
+		return;
+	}
+
+	for (int i = 0; i < num_planes; i++) {
+		auto plane = planes[i];
+		auto info = plane_infos[i];
+		if (plane_buffers[i].size() < info.byte_size) {
+			plane_buffers[i].resize(info.byte_size);
+		}
+		auto src = frame->data[i];
+		memcpy(plane_buffers[i].ptrw(), src, info.byte_size);
+		rd->texture_update(plane, 0, plane_buffers[i]);
+	}
+	run_conversion_shader();
 }

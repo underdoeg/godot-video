@@ -22,6 +22,7 @@ set(CMAKE_SHARED_LINKER_FLAGS "-Wl,-Bsymbolic")
 set(LIBS_INSTALL ${CMAKE_BINARY_DIR}/libs)
 set(LIBS_INCLUDE ${LIBS_INSTALL}/include)
 set(LIBS_LINK ${LIBS_INSTALL}/lib)
+set(LIBS_PKG ${LIBS_LINK}/pkgconfig)
 message("libraries will bi installed into ${LIBS_INSTALL}")
 
 # X264
@@ -44,12 +45,12 @@ ExternalProject_Add(
         x265
         GIT_REPOSITORY https://phwhitfield@bitbucket.org/multicoreware/x265_git.git
         GIT_TAG master
-#        GIT_SHALLOW true
+        #        GIT_SHALLOW true
         PREFIX ${X265_DIR}
         INSTALL_DIR ${LIBS_INSTALL}
-#        CONFIGURE_COMMAND cd <SOURCE_DIR>/build/linux && ./make-Makefiles.bash && ./configure --prefix=<INSTALL_DIR> --enable-static --disable-cli --enable-pic
-#        BUILD_COMMAND make -j -C <SOURCE_DIR>
-#        INSTALL_COMMAND make -C <SOURCE_DIR> install
+        #        CONFIGURE_COMMAND cd <SOURCE_DIR>/build/linux && ./make-Makefiles.bash && ./configure --prefix=<INSTALL_DIR> --enable-static --disable-cli --enable-pic
+        #        BUILD_COMMAND make -j -C <SOURCE_DIR>
+        #        INSTALL_COMMAND make -C <SOURCE_DIR> install
         CMAKE_ARGS
         -DCMAKE_INSTALL_PREFIX=${LIBS_INSTALL}
         -DCMAKE_PREFIX_PATH=${XZ_DIR}
@@ -103,6 +104,8 @@ ExternalProject_Add(
         -DCMAKE_PREFIX_PATH=${BZIP2_DIR}
 )
 
+## WE need shared and static libs, static for final link, shared to have ffmpeg autodetect in configure work
+
 # LIBVA
 set(LIBVA_DIR ${CMAKE_BINARY_DIR}/libva)
 ExternalProject_Add(
@@ -113,55 +116,69 @@ ExternalProject_Add(
         PREFIX ${LIBVA_DIR}
         INSTALL_DIR ${LIBS_INSTALL}
         #        CONFIGURE_COMMAND echo <INSTALL_DIR>
-        CONFIGURE_COMMAND cd <SOURCE_DIR> && ./autogen.sh --prefix=<INSTALL_DIR> --libdir=<INSTALL_DIR>/lib --enable-static --enable-pic --disable-shared
+        CONFIGURE_COMMAND cd <SOURCE_DIR> && ./autogen.sh --prefix=<INSTALL_DIR> --libdir=<INSTALL_DIR>/lib --enable-static --enable-pic
         BUILD_COMMAND make -j -C <SOURCE_DIR>
         INSTALL_COMMAND make -C <SOURCE_DIR> install
 )
 
 # LIBXCB
-set(LIBXCB_DIR ${CMAKE_BINARY_DIR}/libxcb)
+set(LIBXCB_DIR_STATIC ${CMAKE_BINARY_DIR}/libxcb-static)
 ExternalProject_Add(
-        libxcb
+        libxcb-static
         GIT_REPOSITORY https://gitlab.freedesktop.org/xorg/lib/libxcb.git
         GIT_TAG libxcb-1.17.0
         GIT_SHALLOW true
         PREFIX ${LIBXCB_DIR}
         INSTALL_DIR ${LIBS_INSTALL}
         #        CONFIGURE_COMMAND echo <INSTALL_DIR>
-        CONFIGURE_COMMAND cd <SOURCE_DIR> && ./autogen.sh --prefix=<INSTALL_DIR> --libdir=<INSTALL_DIR>/lib --enable-static --enable-pic --disable-shared
+        CONFIGURE_COMMAND cd <SOURCE_DIR> && ./autogen.sh --prefix=<INSTALL_DIR> --libdir=<INSTALL_DIR>/lib --enable-static --enable-pic
         BUILD_COMMAND make -j -C <SOURCE_DIR>
         INSTALL_COMMAND make -C <SOURCE_DIR> install
 )
 
-## LIBVDPAU
-#set(LIBVDPAU_DIR ${CMAKE_BINARY_DIR}/libvdpau)
-#ExternalProject_Add(
-#        libvdpau
-#        GIT_REPOSITORY https://gitlab.freedesktop.org/vdpau/libvdpau.git
-#        GIT_TAG 1.5
-#        GIT_SHALLOW true
-#        PREFIX ${LIBVDPAU_DIR}
-#        INSTALL_DIR ${LIBS_INSTALL}
-#        #        CONFIGURE_COMMAND echo <INSTALL_DIR>
-#        CONFIGURE_COMMAND cd <SOURCE_DIR> && meson --prefix=<INSTALL_DIR> --libdir=<INSTALL_DIR>/lib  <INSTALL_DIR>/build
-#        BUILD_COMMAND ninja -C <INSTALL_DIR>/build install
-#        INSTALL_COMMAND  "" #make -C <SOURCE_DIR> install
-#)
-#
-### LIBDRM
-#set(LIBDRM_DIR ${CMAKE_BINARY_DIR}/libdrm)
-#ExternalProject_Add(
-#        libdrm
-#        GIT_REPOSITORY https://gitlab.freedesktop.org/mesa/libdrm.git
-#        GIT_TAG libdrm-2.4.125
-#        GIT_SHALLOW true
-#        PREFIX ${LIBDRM_DIR}
-#        INSTALL_DIR ${LIBS_INSTALL}
-#        #        CONFIGURE_COMMAND echo <INSTALL_DIR>
-#        CONFIGURE_COMMAND cd <SOURCE_DIR> && meson --prefix=<INSTALL_DIR> --libdir=<INSTALL_DIR>/lib  <INSTALL_DIR>/build
-#        BUILD_COMMAND ninja -C <INSTALL_DIR>/build install
-#        INSTALL_COMMAND  "" #make -C <SOURCE_DIR> install
-#)
+set(LIBXCB_DIR_SHARED ${CMAKE_BINARY_DIR}/libxcb-shared)
+ExternalProject_Add(
+        libxcb-shared
+        GIT_REPOSITORY https://gitlab.freedesktop.org/xorg/lib/libxcb.git
+        GIT_TAG libxcb-1.17.0
+        GIT_SHALLOW true
+        PREFIX ${LIBXCB_DIR}
+        INSTALL_DIR ${LIBS_INSTALL}
+        #        CONFIGURE_COMMAND echo <INSTALL_DIR>
+        CONFIGURE_COMMAND cd <SOURCE_DIR> && ./autogen.sh --prefix=<INSTALL_DIR> --libdir=<INSTALL_DIR>/lib
+        BUILD_COMMAND make -j -C <SOURCE_DIR>
+        INSTALL_COMMAND make -C <SOURCE_DIR> install
+)
+
+# LIBVDPAU
+set(LIBVDPAU_DIR ${CMAKE_BINARY_DIR}/libvdpau)
+ExternalProject_Add(
+        libvdpau
+        GIT_REPOSITORY https://gitlab.freedesktop.org/vdpau/libvdpau.git
+        GIT_TAG 1.5
+        GIT_SHALLOW true
+        PREFIX ${LIBVDPAU_DIR}
+        INSTALL_DIR ${LIBS_INSTALL}
+        #        CONFIGURE_COMMAND echo <INSTALL_DIR>
+        CONFIGURE_COMMAND cd <SOURCE_DIR> && meson --prefix=<INSTALL_DIR> --libdir=<INSTALL_DIR>/lib <INSTALL_DIR>/build
+        BUILD_COMMAND ninja -C <INSTALL_DIR>/build install
+        INSTALL_COMMAND "" #make -C <SOURCE_DIR> install
+)
+
+## LIBDRM
+set(LIBDRM_DIR ${CMAKE_BINARY_DIR}/libdrm)
+ExternalProject_Add(
+        libdrm
+        GIT_REPOSITORY https://gitlab.freedesktop.org/mesa/libdrm.git
+        GIT_TAG libdrm-2.4.125
+        GIT_SHALLOW true
+        PREFIX ${LIBDRM_DIR}
+        INSTALL_DIR ${LIBS_INSTALL}
+        #        CONFIGURE_COMMAND echo <INSTALL_DIR>
+        CONFIGURE_COMMAND cd <SOURCE_DIR> && meson --prefix=<INSTALL_DIR> --libdir=<INSTALL_DIR>/lib <INSTALL_DIR>/build
+        BUILD_COMMAND ninja -C <INSTALL_DIR>/build install
+        INSTALL_COMMAND "" #make -C <SOURCE_DIR> install
+)
 
 # FFMPEG
 #set(FFMPEG_LIBRARY ${CMAKE_INSTALL_FULL_LIBDIR}/${CMAKE_STATIC_LIBRARY_PREFIX}ffmpeg${CMAKE_STATIC_LIBRARY_SUFFIX})
@@ -173,8 +190,8 @@ set(FFMPEG_DIR ${CMAKE_BINARY_DIR}/ffmpeg)
 # set(FFMPEG_CONFIG --enable-shared --enable-libaom --enable-gpl --enable-gnutls --enable-libass --enable-libfdk-aac --enable-libfreetype --enable-libmp3lame --enable-libopus --enable-libsvtav1 --enable-libdav1d --enable-libvorbis --enable-libvpx --enable-libx264 --enable-libx265 --enable-nonfree)
 # potentially enable  --enable-libass  --enable-libfreetype => subtitles |  --enable-libdav1d av1 decode | --enable-libopus opus audio | --enable-libvpx VP8/VP9 |  --enable-libfdk-aac AAC Audio |  --enable-libvorbis  vorbis audio |  --enable-libmp3lame mp3 audio
 
-set(FFMPEG_CONFIG --enable-gpl --enable-libx264 --enable-libx265 --enable-nonfree --disable-vdpau --disable-vaapi
-        --enable-rpath --disable-sdl2)
+set(FFMPEG_CONFIG --enable-gpl --enable-libx264 --enable-libx265 --enable-nonfree --enable-vaapi --enable-libxcb
+        --enable-rpath --enable-ffplay)
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     message("Enable ffmpeg debug build")
     set(FFMPEG_CONFIG ${FFMPEG_CONFIG} --enable-debug=3 --disable-optimizations --disable-stripping)
@@ -191,7 +208,7 @@ ExternalProject_Add(
         #        CONFIGURE_COMMAND echo <INSTALL_DIR>
         CONFIGURE_COMMAND
         cd <SOURCE_DIR> &&
-        ${CMAKE_COMMAND} -E env PKG_CONFIG_PATH=${LIBS_LINK}/pkgconfig
+        ${CMAKE_COMMAND} -E env PKG_CONFIG_PATH=${LIBS_PKG}
         ${CMAKE_COMMAND} -E env CFLAGS=-I${LIBS_INCLUDE}
         ${CMAKE_COMMAND} -E env LDFLAGS=-L${LIBS_LINK}
         ./configure --prefix=<INSTALL_DIR> ${FFMPEG_CONFIG}
@@ -209,8 +226,8 @@ message("FFMPEG will be installed into ${FFMPEG_INSTALL}")
 FetchContent_Declare(
         godot-cpp
         GIT_REPOSITORY https://github.com/godotengine/godot-cpp.git
-        GIT_TAG 1421ba26ad045fb23b35ad7360cf5b2f1de55738
-#        GIT_TAG 4.4
+        # GIT_TAG 1421ba26ad045fb23b35ad7360cf5b2f1de55738
+        GIT_TAG 4.4
 )
 FetchContent_MakeAvailable(godot-cpp)
 
@@ -279,13 +296,17 @@ target_link_directories(${LIBNAME} PRIVATE ${LIBS_LINK})
 #        LINK_FLAGS "-Wl,-rpath,.")
 target_link_libraries(${LIBNAME} PRIVATE godot-cpp
         libavformat.a libavcodec.a libavdevice.a libavutil.a libavfilter.a libswscale.a swresample.a
+
         x264.a x265.a lzma.a bz2_static.a z.a
-        libva.a libva-drm.a libva-glx.a libva-wayland.a libva-x11.a
+#        libva.a libva-drm.a libva-glx.a libva-wayland.a libva-x11.a
         libxcb.a libxcb-dri3.a
-        #        xcb va-drm va-x11 va xcb-dri3
-        # system libs
+
+        # link system libva, no idea how to use the static libs platform independent
+        va va-drm va-x11 va-wayland xcb-dri3
         drm Xext vdpau vulkan Xfixes X11-xcb numa
-        #        vulkan x264 x265 vpx lzma bz2 aom va fdk-aac mp3lame dav1d opus GLX_mesa va-drm va-x11 SvtAv1Enc vdpau vorbis vorbisenc
+        #        avformat avcodec avdevice avutil avfilter swscale swresample
+        #        vulkan vpx  aom va fdk-aac mp3lame dav1d opus GLX_mesa va-drm va-x11 SvtAv1Enc vdpau vorbis vorbisenc
+        #        x264 x265  lzma bz2
 )
 
 #target_link_options(${LIBNAME} PUBLIC -Wl,-rpath ./bin/linux)

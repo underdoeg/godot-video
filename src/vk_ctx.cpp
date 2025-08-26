@@ -10,11 +10,27 @@ using namespace godot;
 
 VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vk_proc_addr(
 		VkInstance instance,
-		const char *pName) {
-	// auto ret = vkGetInstanceProcAddr(instance, pName);
-	// UtilityFunctions::print("get_it: ", pName, " - ", ret != nullptr);
-	// return ret;
-	return vkGetInstanceProcAddr(instance, pName);
+		const char *pName){
+	auto ret = vkGetInstanceProcAddr(instance, pName);
+	UtilityFunctions::print("get_it: ", pName, " - ", ret != nullptr);
+	return ret;
+	// return vkGetInstanceProcAddr(instance, pName);
+}
+bool av_vk_video_supported(godot::RenderingDevice *rd) {
+	return false;
+	static int check = -1;
+	if (check != -1) {
+		return check > 0;
+	}
+	auto v = reinterpret_cast<VkInstance>(rd->get_driver_resource(RenderingDevice::DRIVER_RESOURCE_TOPMOST_OBJECT, {}, 0));
+	PFN_vkVoidFunction function = vk_proc_addr(v, "vkCreateVideoSessionKHR");
+	if (!function) {
+		check = 0;
+		return false;
+	}
+	check = 1;
+	return true;
+
 }
 
 bool av_vk_ctx_setup(AVVulkanDeviceContext *ctx, godot::RenderingDevice *rd) {
@@ -148,9 +164,11 @@ bool av_vk_ctx_setup(AVVulkanDeviceContext *ctx, godot::RenderingDevice *rd) {
 			if (skip(extension.extensionName)) {
 				continue;
 			}
+			UtilityFunctions::print(extension.specVersion, " : ", extension.extensionName);
 			// UtilityFunctions::print("found device extension:", extension.extensionName);
 			device_extension_names.push_back(extension.extensionName);
 		}
+
 
 		ctx->enabled_dev_extensions = device_extension_names.ptr();
 

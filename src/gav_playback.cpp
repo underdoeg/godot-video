@@ -20,8 +20,6 @@ extern "C" {
 #include <libavformat/avformat.h>
 #include <libavutil/channel_layout.h>
 #include <libavutil/pixdesc.h>
-// #include <libswscale/swscale.h>
-// #include <libswresample/swresample.h>
 }
 
 #include <godot_cpp/classes/engine.hpp>
@@ -70,7 +68,6 @@ bool GAVPlayback::load(const String &file_path) {
 
 	AVDictionary *options = nullptr;
 	// av_dict_set(&options, "loglevel", "debug", 0);
-
 	// av_log_set_level(AV_LOG_DEBUG);
 
 	if (!ff_ok(avformat_open_input(&fmt_ctx, path.ascii().ptr(), nullptr, &options))) {
@@ -164,6 +161,17 @@ void GAVPlayback::read_next_packet() {
 }
 
 bool GAVPlayback::init_video() {
+	// determine sensible prefered codec
+	if (!av_vk_video_supported(decode_rd)) {
+		// this is a dummy check ATM, it will always return false, needs godot with video extension loaded
+		// auto detect v dpau or vaapi /nvidia or intel
+		if(conversion_rd->get_device_vendor_name().to_lower()=="nvidia") {
+			hw_preferred = AV_HWDEVICE_TYPE_VDPAU;
+		}else {
+			hw_preferred = AV_HWDEVICE_TYPE_VAAPI;
+		}
+	}
+
 	video_ctx_ready = false;
 	AVCodecParameters *codecpar = fmt_ctx->streams[video_stream_index]->codecpar;
 	const AVCodec *decoder = avcodec_find_decoder(codecpar->codec_id);
@@ -172,9 +180,11 @@ bool GAVPlayback::init_video() {
 		return false;
 	}
 	// Print codec information
-	std::cout << "Video codec: " << avcodec_get_name(codecpar->codec_id) << std::endl;
-	std::cout << "Width: " << codecpar->width << " Height: " << codecpar->height << std::endl;
-	std::cout << "Bitrate: " << codecpar->bit_rate << std::endl;
+	// std::cout << "Video codec: " << avcodec_get_name(codecpar->codec_id) << std::endl;
+	// std::cout << "Width: " << codecpar->width << " Height: " << codecpar->height << std::endl;
+	// std::cout << "Bitrate: " << codecpar->bit_rate << std::endl;
+	UtilityFunctions::print("Video codec: ", avcodec_get_name(codecpar->codec_id));
+	UtilityFunctions::print("Video size: ", codecpar->width, "x", codecpar->height);
 
 	video_codec_ctx = avcodec_alloc_context3(nullptr);
 	if (!video_codec_ctx) {
@@ -193,11 +203,11 @@ bool GAVPlayback::init_video() {
 
 	/* Look for supported hardware-accelerated configurations */
 	int i = 0;
-	const AVCodecHWConfig *accel_config = nullptr;
 
 	const AVCodecHWConfig *config = nullptr;
 	while ((config = avcodec_get_hw_config(decoder, i++)) != nullptr) {
 		configs.push_back(config);
+		UtilityFunctions::print("Detected hw device ", av_hwdevice_get_type_name(config->device_type));
 	}
 
 	if (configs.empty()) {
@@ -205,24 +215,55 @@ bool GAVPlayback::init_video() {
 		return false;
 	}
 
+	UtilityFunctions::print("Detected ", configs.size(), " video decoding devices");
+
 	// prefer a vulkan decoder
 	for (const auto &c : configs) {
-		if (c->device_type == AV_HWDEVICE_TYPE_VULKAN) {
-			video_codec_ctx->hw_device_ctx = av_vk_create_device(decode_rd);
-			if (!video_codec_ctx->hw_device_ctx) {
-				UtilityFunctions::printerr("av_vk_create_device failed");
-			} else {
-				accel_config = c;
-				video_codec_ctx->pix_fmt = accel_config->pix_fmt;
-			}
+		if (c->device_type == hw_preferred) {
+			accel_config = c;
+			UtilityFunctions::print("using preferred hw device ", av_hwdevice_get_type_name(hw_preferred));
 			break;
 		}
 	}
 
+	auto create_hw_dev = [&](const AVCodecHWConfig *conf) {
+		UtilityFunctions::print("Trying to setup HW device: ", av_hwdevice_get_type_name(conf->device_type));
+		if (conf->device_type == AV_HWDEVICE_TYPE_VULKAN) {
+			video_codec_ctx->hw_device_ctx = av_vk_create_device(decode_rd);
+			if (!video_codec_ctx->hw_device_ctx) {
+				UtilityFunctions::printerr("av_vk_create_device failed");
+				return false;
+			}
+		} else if (!ff_ok(av_hwdevice_ctx_create(&video_codec_ctx->hw_device_ctx, conf->device_type, nullptr, nullptr, 0))) {
+			UtilityFunctions::printerr("Could not create HW device");
+			video_codec_ctx->hw_device_ctx = nullptr;
+			return false;
+		}
+		video_codec_ctx->pix_fmt = conf->pix_fmt;
+		UtilityFunctions::print("hw device created");
+		return true;
+	};
+
+	if (accel_config) {
+		if (!create_hw_dev(accel_config)) {
+			accel_config = nullptr;
+		}
+	}
+
 	if (!accel_config) {
-		// just take the first one
-		accel_config = configs[0];
-		UtilityFunctions::printerr("non vulkan hardware video decoding is a TODO");
+		// just take the first one that works
+		// accel_config = configs[0];
+		// UtilityFunctions::print("preferred HW device not found ", av_hwdevice_get_type_name(hw_preferred), " - using: ", av_hwdevice_get_type_name(accel_config->device_type));
+		for (const auto &c : configs) {
+			if (create_hw_dev(c)) {
+				accel_config = c;
+				break;
+			}
+		}
+	}
+
+	if (!video_codec_ctx->hw_device_ctx) {
+		UtilityFunctions::printerr("No HW device found, need to fallback to SW decoding but that is a TODO");
 		return false;
 	}
 	// }
@@ -233,8 +274,26 @@ bool GAVPlayback::init_video() {
 		/* Enable threaded decoding, VVC decode is slow */
 		video_codec_ctx->thread_count = 4;
 		video_codec_ctx->thread_type = (FF_THREAD_FRAME | FF_THREAD_SLICE);
-	} else
+	} else {
 		video_codec_ctx->thread_count = 1;
+	}
+
+	// if (accel_config->device_type == AV_HWDEVICE_TYPE_VAAPI) {
+	// 	video_codec_ctx->hw_device_ctx =  av_hwdevice_ctx_alloc(AV_HWDEVICE_TYPE_VAAPI);
+	// 	if (!video_codec_ctx->hw_device_ctx) {
+	// 		UtilityFunctions::printerr("av_hwdevice_ctx_alloc failed");
+	// 		return false;
+	// 	}
+	// 	auto wctx = reinterpret_cast<AVHWDeviceContext*>(video_codec_ctx->hw_device_ctx);
+	// 	AVVAAPIDeviceContext *vactx = hwctx->hwctx;
+	// 	vactx->display = va_display;
+	// 	if (av_hwdevice_ctx_init(hw_device_ctx) < 0) {
+	// 		fail("av_hwdevice_ctx_init");
+	// 	}
+	// }
+
+	if (!video_codec_ctx->hw_device_ctx) {
+	}
 
 	auto frames = av_hwframe_ctx_alloc(video_codec_ctx->hw_device_ctx);
 	if (!frames) {
@@ -245,7 +304,27 @@ bool GAVPlayback::init_video() {
 	ctx->format = accel_config->pix_fmt;
 	ctx->width = codecpar->width;
 	ctx->height = codecpar->height;
-	ctx->sw_format = AV_PIX_FMT_YUV420P;
+	//ctx->sw_format = video_codec_ctx->sw_pix_fmt;
+	//ctx->sw_format = accel_config->pix_fmt;
+	// ctx->sw_format = AV_PIX_FMT_YUV420P;
+
+	// detect valid sw formats
+	AVHWFramesConstraints *hw_frames_const = av_hwdevice_get_hwframe_constraints(video_codec_ctx->hw_device_ctx, nullptr);
+	auto sw_format = hw_frames_const->valid_sw_formats[0];
+	for (AVPixelFormat *p = hw_frames_const->valid_sw_formats;
+			*p != AV_PIX_FMT_NONE; p++) {
+		// UtilityFunctions::print("HW decoder pixel format detected: ", av_get_pix_fmt_name(*p));
+		// if (*p == AV_PIX_FMT_BGRA) {
+		// 	sw_format = *p;
+		// }
+		// prefer nv12
+		if (*p == AV_PIX_FMT_YUV420P) {
+			sw_format = *p;
+		}
+	}
+	// just use the first one for the moment
+	UtilityFunctions::print("Using sw format ", av_get_pix_fmt_name(sw_format));
+	ctx->sw_format = sw_format;
 
 	if (av_hwframe_ctx_init(frames) != 0) {
 		UtilityFunctions::printerr("Failed to initialize HW frame context.");
@@ -430,9 +509,13 @@ void GAVPlayback::_update(double p_delta) {
 		}
 	}
 
-	// process might have given us a new video frame, update the texture
+	// process might have given us a new video frame, update_from_vulkan the texture
 	if (video_frame_to_show) {
-		texture.update(video_frame_to_show);
+		if (accel_config->device_type == AV_HWDEVICE_TYPE_VULKAN) {
+			texture.update_from_vulkan(video_frame_to_show);
+		} else {
+			texture.update_from_hw(video_frame_to_show);
+		}
 		video_frame_to_show.reset();
 	}
 }
