@@ -4,7 +4,7 @@
 
 dependency on ubuntu
 ```
-sudo apt install libffmpeg-ocaml-dev
+sudo apt install libavcodec-dev libavdevice-dev libavfilter-dev libavformat-dev libavutil-dev ffmpeg
 ```
 
 ```

@@ -176,7 +176,7 @@ bool av_vk_ctx_setup(AVVulkanDeviceContext *ctx, godot::RenderingDevice *rd) {
 		// }
 	}
 
-#if (LIBAVUTIL_VERSION_MINOR >= 8)
+#if LIBAVUTIL_VERSION_MAJOR >= 59
 	{
 		ctx->nb_qf = 0;
 
