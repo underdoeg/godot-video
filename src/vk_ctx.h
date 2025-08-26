@@ -7,7 +7,8 @@
 #include <godot_cpp/classes/rendering_server.hpp>
 
 extern "C" {
-#include <libavutil/hwcontext_vulkan.h>
+	#include <libavutil/hwcontext.h>
+	#include <libavutil/hwcontext_vulkan.h>
 }
 
 VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vk_proc_addr(VkInstance instance, const char *pName);

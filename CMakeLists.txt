@@ -290,6 +290,7 @@ set(GODOT_PROJECT_BINARY_DIR "${PROJECT_SOURCE_DIR}/${GODOT_PROJECT_DIR}/bin/${G
 set(USE_SYSTEM_FFMPEG ON)
 
 if (USE_SYSTEM_FFMPEG)
+    message("using system ffmpeg")
     target_include_directories(${LIBNAME} PRIVATE ${LIBS_INCLUDE}) #${CMAKE_BINARY_DIR}/ffmpeg/src/ffmpeg
     target_link_directories(${LIBNAME} PRIVATE ${LIBS_LINK})
     target_link_libraries(${LIBNAME} PRIVATE godot-cpp
@@ -300,6 +301,7 @@ if (USE_SYSTEM_FFMPEG)
             x264 x265 lzma bz2
     )
 else ()
+    message("using bundled ffmpeg")
     target_include_directories(${LIBNAME} PRIVATE ${LIBS_INCLUDE}) #${CMAKE_BINARY_DIR}/ffmpeg/src/ffmpeg
     target_link_directories(${LIBNAME} PRIVATE ${LIBS_LINK})
     target_link_libraries(${LIBNAME} PRIVATE godot-cpp

@@ -64,7 +64,7 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 
 	// std::thread thread;
 	// void thread_func();
-	AVHWDeviceType hw_preferred = AV_HWDEVICE_TYPE_VULKAN; //AV_HWDEVICE_TYPE_VAAPI //AV_HWDEVICE_TYPE_VDPAU; //AV_HWDEVICE_TYPE_VULKAN; //AV_HWDEVICE_TYPE_NONE; // A
+	AVHWDeviceType hw_preferred = AV_HWDEVICE_TYPE_NONE; //AV_HWDEVICE_TYPE_VAAPI //AV_HWDEVICE_TYPE_VDPAU; //AV_HWDEVICE_TYPE_VULKAN; //AV_HWDEVICE_TYPE_NONE; // A
 	const AVCodecHWConfig *accel_config = nullptr;
 
 	// if set this frame will be sent to the renderer

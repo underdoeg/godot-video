@@ -2,6 +2,11 @@
 
 ### build with system ffmpeg
 
+dependency on ubuntu
+```
+sudo apt install libffmpeg-ocaml-dev
+```
+
 ```
 mkdir build
 cd build
