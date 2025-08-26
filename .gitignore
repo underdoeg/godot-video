@@ -61,5 +61,6 @@ compile_commands.json
 cmake-build*
 CMakeUserPresets.json
 /.run/
-/demo/input.mp4
 /bin/godot*
+*.mp4
+*.mov
