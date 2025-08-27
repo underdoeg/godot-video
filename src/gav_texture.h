@@ -39,6 +39,7 @@ class GAVTexture {
 	std::array<PlaneInfo, 4> plane_infos{};
 	std::array<godot::RID, 4> planes{};
 	std::array<godot::PackedByteArray, 4> plane_buffers{};
+	AVFramePtr conversion_frame;
 	godot::RID conversion_shader{};
 	godot::RID conversion_shader_uniform_set{};
 	godot::RID conversion_pipeline{};
@@ -54,7 +55,7 @@ public:
 	~GAVTexture();
 	bool test_copy = false;
 
-	godot::Ref<godot::Texture2DRD> setup(AVCodecContext *ctx, godot::RenderingDevice *rd);
+	godot::Ref<godot::Texture2DRD> setup(AVCodecContext *_ctx, godot::RenderingDevice *_rd);
 	[[nodiscard]] godot::Ref<godot::Texture2DRD> get_texture() const {
 		return texture;
 	}

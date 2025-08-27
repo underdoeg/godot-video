@@ -231,6 +231,7 @@ bool GAVPlayback::init_video() {
 	}
 
 	auto create_hw_dev = [&](const AVCodecHWConfig *conf) {
+		// return false;
 		UtilityFunctions::print("Trying to setup HW device: ", av_hwdevice_get_type_name(conf->device_type));
 		if (conf->device_type == AV_HWDEVICE_TYPE_VULKAN) {
 			video_codec_ctx->hw_device_ctx = av_vk_create_device(decode_rd);
@@ -270,10 +271,10 @@ bool GAVPlayback::init_video() {
 		}
 	}
 
-	if (!video_codec_ctx->hw_device_ctx) {
-		UtilityFunctions::printerr("No HW device found, need to fallback to SW decoding but that is a TODO");
-		return false;
-	}
+	// if (!video_codec_ctx->hw_device_ctx) {
+	// 	UtilityFunctions::printerr("No HW device found, need to fallback to SW decoding but that is a TODO");
+	// 	return false;
+	// }
 	// }
 
 	if (codecpar->codec_id == AV_CODEC_ID_VVC) {
@@ -300,49 +301,49 @@ bool GAVPlayback::init_video() {
 	// 	}
 	// }
 
-	if (!video_codec_ctx->hw_device_ctx) {
-	}
-
-	auto frames = av_hwframe_ctx_alloc(video_codec_ctx->hw_device_ctx);
-	if (!frames) {
-		UtilityFunctions::printerr("Failed to allocate HW frame context.");
-		return false;
-	}
-	auto *ctx = reinterpret_cast<AVHWFramesContext *>(frames->data);
-	ctx->format = accel_config->pix_fmt;
-	ctx->width = codecpar->width;
-	ctx->height = codecpar->height;
-	ctx->sw_format = video_codec_ctx->sw_pix_fmt;
-	// ctx->sw_format = accel_config->pix_fmt;
-	// ctx->sw_format = AV_PIX_FMT_YUV420P;
-
-	// detect valid sw formats
-	AVHWFramesConstraints *hw_frames_const = av_hwdevice_get_hwframe_constraints(video_codec_ctx->hw_device_ctx, nullptr);
-	auto sw_format = hw_frames_const->valid_sw_formats[0];
-	for (AVPixelFormat *p = hw_frames_const->valid_sw_formats;
-			*p != AV_PIX_FMT_NONE; p++) {
-		// UtilityFunctions::print("HW decoder pixel format detected: ", av_get_pix_fmt_name(*p));
-		// if (*p == AV_PIX_FMT_BGRA) {
-		// 	sw_format = *p;
-		// }
-		// prefer nv12
-		if (*p == AV_PIX_FMT_YUV420P) {
-			sw_format = *p;
+	if (video_codec_ctx->hw_device_ctx) {
+		auto frames = av_hwframe_ctx_alloc(video_codec_ctx->hw_device_ctx);
+		if (!frames) {
+			UtilityFunctions::printerr("Failed to allocate HW frame context.");
+			return false;
 		}
-	}
-	// just use the first one for the moment
-	UtilityFunctions::print("Using sw format ", av_get_pix_fmt_name(sw_format));
-	ctx->sw_format = sw_format;
+		auto *ctx = reinterpret_cast<AVHWFramesContext *>(frames->data);
+		ctx->format = accel_config->pix_fmt;
+		ctx->width = codecpar->width;
+		ctx->height = codecpar->height;
+		ctx->sw_format = video_codec_ctx->sw_pix_fmt;
+		// ctx->sw_format = accel_config->pix_fmt;
+		// ctx->sw_format = AV_PIX_FMT_YUV420P;
 
-	if (av_hwframe_ctx_init(frames) != 0) {
-		UtilityFunctions::printerr("Failed to initialize HW frame context.");
-		// av_buffer_unref(&frames);
-		// return false;
-		return false;
-	}
-	UtilityFunctions::print("Created video decoder context HW device.");
-	video_codec_ctx->hw_frames_ctx = av_buffer_ref(frames);
+		// detect valid sw formats
+		AVHWFramesConstraints *hw_frames_const = av_hwdevice_get_hwframe_constraints(video_codec_ctx->hw_device_ctx, nullptr);
+		auto sw_format = hw_frames_const->valid_sw_formats[0];
+		for (AVPixelFormat *p = hw_frames_const->valid_sw_formats;
+				*p != AV_PIX_FMT_NONE; p++) {
+			// UtilityFunctions::print("HW decoder pixel format detected: ", av_get_pix_fmt_name(*p));
+			// if (*p == AV_PIX_FMT_BGRA) {
+			// 	sw_format = *p;
+			// }
+			// prefer nv12
+			if (*p == AV_PIX_FMT_YUV420P) {
+				sw_format = *p;
+			}
+		}
+		// just use the first one for the moment
+		UtilityFunctions::print("Using sw format ", av_get_pix_fmt_name(sw_format));
+		ctx->sw_format = sw_format;
 
+		if (av_hwframe_ctx_init(frames) != 0) {
+			UtilityFunctions::printerr("Failed to initialize HW frame context.");
+			// av_buffer_unref(&frames);
+			// return false;
+			return false;
+		}
+		UtilityFunctions::print("Created video decoder context HW device.");
+		video_codec_ctx->hw_frames_ctx = av_buffer_ref(frames);
+	} else {
+		UtilityFunctions::print("using software decoder");
+	}
 	// UtilityFunctions::print("frame format is: ", av_get_pix_fmt_name(codec_ctx->sw_format));
 
 	if (!ff_ok(avcodec_open2(video_codec_ctx, decoder, nullptr))) {
@@ -519,10 +520,14 @@ void GAVPlayback::_update(double p_delta) {
 
 	// process might have given us a new video frame, update_from_vulkan the texture
 	if (video_frame_to_show) {
-		if (accel_config->device_type == AV_HWDEVICE_TYPE_VULKAN) {
-			texture.update_from_vulkan(video_frame_to_show);
+		if (accel_config) {
+			if (accel_config->device_type == AV_HWDEVICE_TYPE_VULKAN) {
+				texture.update_from_vulkan(video_frame_to_show);
+			} else {
+				texture.update_from_hw(video_frame_to_show);
+			}
 		} else {
-			texture.update_from_hw(video_frame_to_show);
+			texture.update_from_sw(video_frame_to_show);
 		}
 		video_frame_to_show.reset();
 	}

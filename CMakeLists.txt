@@ -309,7 +309,7 @@ else ()
             x264.a x265.a lzma.a bz2_static.a z.a
 #            libva.a libva-drm.a libva-glx.a libva-wayland.a libva-x11.a
             libxcb.a libxcb-dri3.a
-            va va-drm va-x11 va-wayland xcb-dri3
+            va va-drm va-x11 va-wayland xcb-dri3 # OpenCL
             # link system libva, no idea how to use the static libs platform independent
             vulkan vpx aom va fdk-aac mp3lame dav1d opus GLX_mesa va-drm va-x11 vdpau vorbis vorbisenc numa
     )

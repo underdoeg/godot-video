@@ -64,9 +64,9 @@ Ref<Texture2DRD> GAVTexture::setup(AVCodecContext *_ctx, RenderingDevice *_rd) {
 
 	// rd->compute_pipeline_create()
 
-	auto *frames = reinterpret_cast<AVHWFramesContext *>(codec_ctx->hw_frames_ctx->data);
+	// auto *frames = reinterpret_cast<AVHWFramesContext *>(codec_ctx->hw_frames_ctx->data);
 
-	UtilityFunctions::print("reported pixel format on setup is ", av_get_pix_fmt_name(frames->sw_format));
+	// UtilityFunctions::print("reported pixel format on setup is ", av_get_pix_fmt_name(pixel_format));
 
 	width = codec_ctx->width;
 	height = codec_ctx->height;
@@ -228,7 +228,7 @@ bool GAVTexture::setup_pipeline(AVPixelFormat pixel_format) {
 		conversion_shader = p010le(rd, { width, height });
 	} else if (pixel_format == AV_PIX_FMT_P016LE) {
 		conversion_shader = p016le(rd, { width, height });
-	}else {
+	} else {
 		UtilityFunctions::printerr("unsupported pixel format: ", av_get_pix_fmt_name(pixel_format));
 	}
 
@@ -479,16 +479,6 @@ void GAVTexture::update_from_sw(AVFramePtr frame) {
 	// for (int i = 0; i < num_planes; i++) {
 	// 	auto img = frame->
 	// }
-}
-
-void GAVTexture::update_from_hw(const AVFramePtr &hw_frame) {
-	auto *frames = reinterpret_cast<AVHWFramesContext *>(codec_ctx->hw_frames_ctx->data);
-
-	auto frame = av_frame_ptr();
-	if (!ff_ok(av_hwframe_transfer_data(frame.get(), hw_frame.get(), 0))) {
-		UtilityFunctions::printerr("Could not transfer_data from hw to sw");
-		return;
-	}
 
 	if (!setup_pipeline(static_cast<enum AVPixelFormat>(frame->format))) { //frames->sw_format)) {
 		UtilityFunctions::printerr("failed to setup render pipeline");
@@ -506,4 +496,19 @@ void GAVTexture::update_from_hw(const AVFramePtr &hw_frame) {
 		rd->texture_update(plane, 0, plane_buffers[i]);
 	}
 	run_conversion_shader();
+}
+
+void GAVTexture::update_from_hw(const AVFramePtr &hw_frame) {
+	auto *frames = reinterpret_cast<AVHWFramesContext *>(codec_ctx->hw_frames_ctx->data);
+
+	if (!conversion_frame) {
+		conversion_frame = av_frame_ptr();
+	}
+
+	if (!ff_ok(av_hwframe_transfer_data(conversion_frame.get(), hw_frame.get(), 0))) {
+		UtilityFunctions::printerr("Could not transfer_data from hw to sw");
+		return;
+	}
+
+	update_from_sw(conversion_frame);
 }
