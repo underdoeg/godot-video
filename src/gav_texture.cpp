@@ -70,6 +70,7 @@ Ref<Texture2DRD> GAVTexture::setup(AVCodecContext *_ctx, RenderingDevice *_rd) {
 
 	width = codec_ctx->width;
 	height = codec_ctx->height;
+
 	UtilityFunctions::print("create texture of size ", width, "x", height);
 
 	if (width % 16 != 0 || height % 16 != 0) {
@@ -185,9 +186,9 @@ bool GAVTexture::setup_pipeline(AVPixelFormat pixel_format) {
 			// create texture planes
 			int w = line_size;
 			int h = byte_size / line_size;
-			if (h == 2)
-				h = 1080;
-			plane_infos[i] = { w, h, 1, byte_size };
+			// if (h == 2)
+			// 	h = 1080;
+			plane_infos[i] = { w, h, 1, line_size, byte_size };
 
 			Ref<RDTextureFormat> format;
 			format.instantiate();
@@ -488,11 +489,25 @@ void GAVTexture::update_from_sw(AVFramePtr frame) {
 	for (int i = 0; i < num_planes; i++) {
 		auto plane = planes[i];
 		auto info = plane_infos[i];
+
+		// const auto byte_size = frame->linesize[0] * info.height;
+		// UtilityFunctions::print(frame->linesize[0], " ", info.line_size);
+
 		if (plane_buffers[i].size() < info.byte_size) {
 			plane_buffers[i].resize(info.byte_size);
 		}
 		auto src = frame->data[i];
-		memcpy(plane_buffers[i].ptrw(), src, info.byte_size);
+
+		// we expect tight lines without extra, but line_size of the frame can have additional padding. check for it
+		const auto line_size = frame->linesize[i];
+		if (line_size == info.line_size) {
+			memcpy(plane_buffers[i].ptrw(), src, info.byte_size);
+		} else {
+			// copy line for line
+			for (size_t y = 0; y < info.height; y++) {
+				memcpy(plane_buffers[i].ptrw() + info.line_size * y, src + line_size * y, info.line_size);
+			}
+		}
 		rd->texture_update(plane, 0, plane_buffers[i]);
 	}
 	run_conversion_shader();

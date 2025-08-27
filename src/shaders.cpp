@@ -162,8 +162,8 @@ RID nv12(RenderingDevice *rd, Vector2i size) {
 			//float g = y - 0.39465 * u - 0.58060 * v;
 			//float b = y + 2.03211  * u;
 
-			vec3 rgb = vec3(y,u-.5,v-.5) * color_matrix;
-			//vec3 rgb = vec3(v,v,v);
+			//vec3 rgb = vec3(y,u-.5,v-.5) * color_matrix;
+			vec3 rgb = vec3(y,y,y);
 			imageStore(result, texel, vec4(rgb, 1));
 			//imageStore(result, texel, vec4(y,u,v, 1));
 		}

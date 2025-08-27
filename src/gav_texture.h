@@ -24,7 +24,7 @@ class GAVTexture {
 	// Pipeline pipeline_type = UNKNOWN;
 
 	struct PlaneInfo {
-		int width, height, depth;
+		int width, height, depth, line_size;
 		size_t byte_size;
 	};
 	int width = 0;

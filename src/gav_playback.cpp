@@ -520,6 +520,7 @@ void GAVPlayback::_update(double p_delta) {
 
 	// process might have given us a new video frame, update_from_vulkan the texture
 	if (video_frame_to_show) {
+		// UtilityFunctions::print(video_frame_to_show->width, "x", video_frame_to_show->height);
 		if (accel_config) {
 			if (accel_config->device_type == AV_HWDEVICE_TYPE_VULKAN) {
 				texture.update_from_vulkan(video_frame_to_show);
