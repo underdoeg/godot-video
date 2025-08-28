@@ -8,15 +8,15 @@ func _ready() -> void:
 
 	%video_dynamic.stream = dynamic_video
 	%video_dynamic.loop = true
-	%video_dynamic.play()
+	#%video_dynamic.play()
 	
 	dynamic_video.finished.connect(func():print("done"))
 	
 	%video_tex.texture = %video.get_video_texture()
-	%video_tex2.texture = %video.get_video_texture()
+	#%video_tex2.texture = %video.get_video_texture()
 		
 	%video_dynamic2.stream = dynamic_video
-	%video_dynamic2.play()
+	#%video_dynamic2.play()
 	
 	_on_timer_timeout()
 
@@ -29,9 +29,9 @@ func _on_timer_timeout():
 func _input(event):
 	if event is InputEventKey:
 		if not event.pressed and event.keycode == KEY_C:
-			#%video.stream = GAVStream.new()
 			%video.stream.file = "res://8k_h265.mp4"
 			%video.play()
+
 			# loading a new video, creates a new texture
 			%video_tex.texture = %video.get_video_texture()
 			%video_tex2.texture = %video.get_video_texture()

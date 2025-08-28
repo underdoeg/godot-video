@@ -107,63 +107,63 @@ ExternalProject_Add(
 ## WE need shared and static libs, static for final link, shared to have ffmpeg autodetect in configure work
 
 # LIBVA
-set(LIBVA_DIR ${CMAKE_BINARY_DIR}/libva)
-ExternalProject_Add(
-        libva
-        GIT_REPOSITORY https://github.com/intel/libva.git
-        GIT_TAG master
-        GIT_SHALLOW true
-        PREFIX ${LIBVA_DIR}
-        INSTALL_DIR ${LIBS_INSTALL}
-        #        CONFIGURE_COMMAND echo <INSTALL_DIR>
-        CONFIGURE_COMMAND cd <SOURCE_DIR> && ./autogen.sh --prefix=<INSTALL_DIR> --libdir=<INSTALL_DIR>/lib --enable-static --enable-pic
-        BUILD_COMMAND make -j -C <SOURCE_DIR>
-        INSTALL_COMMAND make -C <SOURCE_DIR> install
-)
+#set(LIBVA_DIR ${CMAKE_BINARY_DIR}/libva)
+#ExternalProject_Add(
+#        libva
+#        GIT_REPOSITORY https://github.com/intel/libva.git
+#        GIT_TAG 2.22.0
+#        GIT_SHALLOW true
+#        PREFIX ${LIBVA_DIR}
+#        INSTALL_DIR ${LIBS_INSTALL}
+#        #        CONFIGURE_COMMAND echo <INSTALL_DIR>
+#        CONFIGURE_COMMAND cd <SOURCE_DIR> && ./autogen.sh --prefix=<INSTALL_DIR> --libdir=<INSTALL_DIR>/lib --enable-static --enable-pic
+#        BUILD_COMMAND make -j -C <SOURCE_DIR>
+#        INSTALL_COMMAND make -C <SOURCE_DIR> install
+#)
 
 # LIBXCB
-set(LIBXCB_DIR_STATIC ${CMAKE_BINARY_DIR}/libxcb-static)
-ExternalProject_Add(
-        libxcb-static
-        GIT_REPOSITORY https://gitlab.freedesktop.org/xorg/lib/libxcb.git
-        GIT_TAG libxcb-1.17.0
-        GIT_SHALLOW true
-        PREFIX ${LIBXCB_DIR}
-        INSTALL_DIR ${LIBS_INSTALL}
-        #        CONFIGURE_COMMAND echo <INSTALL_DIR>
-        CONFIGURE_COMMAND cd <SOURCE_DIR> && ./autogen.sh --prefix=<INSTALL_DIR> --libdir=<INSTALL_DIR>/lib --enable-static --enable-pic
-        BUILD_COMMAND make -j -C <SOURCE_DIR>
-        INSTALL_COMMAND make -C <SOURCE_DIR> install
-)
-
-set(LIBXCB_DIR_SHARED ${CMAKE_BINARY_DIR}/libxcb-shared)
-ExternalProject_Add(
-        libxcb-shared
-        GIT_REPOSITORY https://gitlab.freedesktop.org/xorg/lib/libxcb.git
-        GIT_TAG libxcb-1.17.0
-        GIT_SHALLOW true
-        PREFIX ${LIBXCB_DIR}
-        INSTALL_DIR ${LIBS_INSTALL}
-        #        CONFIGURE_COMMAND echo <INSTALL_DIR>
-        CONFIGURE_COMMAND cd <SOURCE_DIR> && ./autogen.sh --prefix=<INSTALL_DIR> --libdir=<INSTALL_DIR>/lib
-        BUILD_COMMAND make -j -C <SOURCE_DIR>
-        INSTALL_COMMAND make -C <SOURCE_DIR> install
-)
+#set(LIBXCB_DIR_STATIC ${CMAKE_BINARY_DIR}/libxcb-static)
+#ExternalProject_Add(
+#        libxcb-static
+#        GIT_REPOSITORY https://gitlab.freedesktop.org/xorg/lib/libxcb.git
+#        GIT_TAG libxcb-1.17.0
+#        GIT_SHALLOW true
+#        PREFIX ${LIBXCB_DIR}
+#        INSTALL_DIR ${LIBS_INSTALL}
+#        #        CONFIGURE_COMMAND echo <INSTALL_DIR>
+#        CONFIGURE_COMMAND cd <SOURCE_DIR> && ./autogen.sh --prefix=<INSTALL_DIR> --libdir=<INSTALL_DIR>/lib --enable-static --enable-pic
+#        BUILD_COMMAND make -j -C <SOURCE_DIR>
+#        INSTALL_COMMAND make -C <SOURCE_DIR> install
+#)
+#
+#set(LIBXCB_DIR_SHARED ${CMAKE_BINARY_DIR}/libxcb-shared)
+#ExternalProject_Add(
+#        libxcb-shared
+#        GIT_REPOSITORY https://gitlab.freedesktop.org/xorg/lib/libxcb.git
+#        GIT_TAG libxcb-1.17.0
+#        GIT_SHALLOW true
+#        PREFIX ${LIBXCB_DIR}
+#        INSTALL_DIR ${LIBS_INSTALL}
+#        #        CONFIGURE_COMMAND echo <INSTALL_DIR>
+#        CONFIGURE_COMMAND cd <SOURCE_DIR> && ./autogen.sh --prefix=<INSTALL_DIR> --libdir=<INSTALL_DIR>/lib
+#        BUILD_COMMAND make -j -C <SOURCE_DIR>
+#        INSTALL_COMMAND make -C <SOURCE_DIR> install
+#)
 
 # LIBVDPAU
-set(LIBVDPAU_DIR ${CMAKE_BINARY_DIR}/libvdpau)
-ExternalProject_Add(
-        libvdpau
-        GIT_REPOSITORY https://gitlab.freedesktop.org/vdpau/libvdpau.git
-        GIT_TAG 1.5
-        GIT_SHALLOW true
-        PREFIX ${LIBVDPAU_DIR}
-        INSTALL_DIR ${LIBS_INSTALL}
-        #        CONFIGURE_COMMAND echo <INSTALL_DIR>
-        CONFIGURE_COMMAND cd <SOURCE_DIR> && meson --prefix=<INSTALL_DIR> --libdir=<INSTALL_DIR>/lib <INSTALL_DIR>/build
-        BUILD_COMMAND ninja -C <INSTALL_DIR>/build install
-        INSTALL_COMMAND "" #make -C <SOURCE_DIR> install
-)
+#set(LIBVDPAU_DIR ${CMAKE_BINARY_DIR}/libvdpau)
+#ExternalProject_Add(
+#        libvdpau
+#        GIT_REPOSITORY https://gitlab.freedesktop.org/vdpau/libvdpau.git
+#        GIT_TAG 1.5
+#        GIT_SHALLOW true
+#        PREFIX ${LIBVDPAU_DIR}
+#        INSTALL_DIR ${LIBS_INSTALL}
+#        #        CONFIGURE_COMMAND echo <INSTALL_DIR>
+#        CONFIGURE_COMMAND cd <SOURCE_DIR> && meson --prefix=<INSTALL_DIR> --libdir=<INSTALL_DIR>/lib <INSTALL_DIR>/build
+#        BUILD_COMMAND ninja -C <INSTALL_DIR>/build install
+#        INSTALL_COMMAND "" #make -C <SOURCE_DIR> install
+#)
 
 ## LIBDRM
 set(LIBDRM_DIR ${CMAKE_BINARY_DIR}/libdrm)
@@ -190,7 +190,7 @@ set(FFMPEG_DIR ${CMAKE_BINARY_DIR}/ffmpeg)
 # set(FFMPEG_CONFIG --enable-shared --enable-libaom --enable-gpl --enable-gnutls --enable-libass --enable-libfdk-aac --enable-libfreetype --enable-libmp3lame --enable-libopus --enable-libsvtav1 --enable-libdav1d --enable-libvorbis --enable-libvpx --enable-libx264 --enable-libx265 --enable-nonfree)
 # potentially enable  --enable-libass  --enable-libfreetype => subtitles |  --enable-libdav1d av1 decode | --enable-libopus opus audio | --enable-libvpx VP8/VP9 |  --enable-libfdk-aac AAC Audio |  --enable-libvorbis  vorbis audio |  --enable-libmp3lame mp3 audio
 
-set(FFMPEG_CONFIG --enable-gpl --enable-libx264 --enable-libx265 --enable-nonfree --enable-vaapi --enable-libxcb
+set(FFMPEG_CONFIG --enable-gpl --enable-libx264 --enable-libx265 --enable-nonfree --enable-vaapi
         --enable-rpath --enable-ffplay)
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     message("Enable ffmpeg debug build")
@@ -308,11 +308,12 @@ else ()
             libavformat.a libavcodec.a libavdevice.a libavutil.a libavfilter.a libswscale.a swresample.a
             x264.a x265.a lzma.a bz2_static.a z.a
             #libva.a libva-drm.a libva-glx.a libva-wayland.a libva-x11.a
-            # libxcb.a libxcb-dri3.a
-            xcb xcb-dri3
-            va va-drm va-x11 va-wayland # OpenCL
+            #libxcb.a libxcb-dri3.a
+            # xcb xcb-dri3
+           va va-drm va-x11 va-wayland # OpenCL
             # link system libva, no idea how to use the static libs platform independent
-            vulkan vpx aom va fdk-aac mp3lame dav1d opus GLX_mesa va-drm va-x11 vdpau vorbis vorbisenc numa
+            X11 Xfixes
+            vulkan vpx aom fdk-aac mp3lame dav1d opus GLX_mesa vdpau vorbis vorbisenc numa
     )
 endif ()
 

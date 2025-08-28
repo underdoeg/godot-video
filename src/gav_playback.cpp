@@ -61,7 +61,6 @@ bool GAVPlayback::load(const String &file_path) {
 	if (texture_public.is_valid()) {
 		texture_public->set_texture_rd_rid(RID());
 	}
-	init();
 
 	return true;
 }
@@ -116,7 +115,7 @@ bool GAVPlayback::init() {
 		conversion_rd = decode_rd; // RenderingServer::get_singleton()->create_local_rendering_device();
 	}
 
-	cleanup();
+	// cleanup();
 
 	// conversion_rd = RenderingServer::get_singleton()->get_rendering_device();
 
@@ -254,7 +253,6 @@ bool GAVPlayback::init_video() {
 	}
 
 	auto create_hw_dev = [&](const AVCodecHWConfig *conf) {
-		// return false;
 		UtilityFunctions::print(filename, ": ", "Trying to setup HW device: ", av_hwdevice_get_type_name(conf->device_type));
 		if (conf->device_type == AV_HWDEVICE_TYPE_VULKAN) {
 			video_codec_ctx->hw_device_ctx = av_vk_create_device(decode_rd);
