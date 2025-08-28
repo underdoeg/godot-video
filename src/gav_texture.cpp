@@ -37,7 +37,6 @@ static VkFunctions *vkf = nullptr;
 GAVTexture::GAVTexture() {
 }
 GAVTexture::~GAVTexture() {
-	UtilityFunctions::print("-------------------- cleanup");
 	if (texture_rid_main.is_valid()) {
 		RenderingServer::get_singleton()->get_rendering_device()->free_rid(texture_rid_main);
 	}
