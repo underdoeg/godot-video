@@ -179,7 +179,21 @@ ExternalProject_Add(
         BUILD_COMMAND ninja -C <INSTALL_DIR>/build install
         INSTALL_COMMAND "" #make -C <SOURCE_DIR> install
 )
-
+set(FFNVENC_DIR ${CMAKE_BINARY_DIR}/ffnvenc)
+ExternalProject_Add(
+        ffnvenc
+        GIT_REPOSITORY https://git.videolan.org/git/ffmpeg/nv-codec-headers.git
+        GIT_TAG n13.0.19.0
+        GIT_SHALLOW true
+        PREFIX ${FFNVENC_DIR}
+        INSTALL_DIR ${LIBS_INSTALL}
+        CONFIGURE_COMMAND ""
+#        CONFIGURE_COMMAND cd <SOURCE_DIR>
+        BUILD_COMMAND ""
+        #BUILD_COMMAND cd <SOURCE_DIR> && mkdir -p <INSTALL_DIR>/include && cp -r <SOURCE_DIR>/include/ffnvcodec <INSTALL_DIR>/include
+        #${CMAKE_COMMAND} -E env PREFIX=${LIBS_INSTALL} make -C <INSTALL_DIR>/build install
+        INSTALL_COMMAND make -C <SOURCE_DIR> PREFIX=<INSTALL_DIR> install
+)
 # FFMPEG
 #set(FFMPEG_LIBRARY ${CMAKE_INSTALL_FULL_LIBDIR}/${CMAKE_STATIC_LIBRARY_PREFIX}ffmpeg${CMAKE_STATIC_LIBRARY_SUFFIX})
 set(FFMPEG_DIR ${CMAKE_BINARY_DIR}/ffmpeg)
@@ -189,8 +203,8 @@ set(FFMPEG_DIR ${CMAKE_BINARY_DIR}/ffmpeg)
 # config with everything
 # set(FFMPEG_CONFIG --enable-shared --enable-libaom --enable-gpl --enable-gnutls --enable-libass --enable-libfdk-aac --enable-libfreetype --enable-libmp3lame --enable-libopus --enable-libsvtav1 --enable-libdav1d --enable-libvorbis --enable-libvpx --enable-libx264 --enable-libx265 --enable-nonfree)
 # potentially enable  --enable-libass  --enable-libfreetype => subtitles |  --enable-libdav1d av1 decode | --enable-libopus opus audio | --enable-libvpx VP8/VP9 |  --enable-libfdk-aac AAC Audio |  --enable-libvorbis  vorbis audio |  --enable-libmp3lame mp3 audio
-
-set(FFMPEG_CONFIG --enable-gpl --enable-libx264 --enable-libx265 --enable-nonfree --enable-vaapi
+# --enable-cuda-sdk
+set(FFMPEG_CONFIG --enable-gpl --enable-libx264 --enable-libx265 --enable-nonfree --enable-vaapi --enable-nvenc --enable-ffnvcodec
         --enable-rpath --enable-ffplay)
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     message("Enable ffmpeg debug build")
@@ -208,6 +222,7 @@ ExternalProject_Add(
         #        CONFIGURE_COMMAND echo <INSTALL_DIR>
         CONFIGURE_COMMAND
         cd <SOURCE_DIR> &&
+        #${CMAKE_COMMAND} -E env PATH=/opt/cuda/bin:/usr/bin
         ${CMAKE_COMMAND} -E env PKG_CONFIG_PATH=${LIBS_PKG}
         ${CMAKE_COMMAND} -E env CFLAGS=-I${LIBS_INCLUDE}
         ${CMAKE_COMMAND} -E env LDFLAGS=-L${LIBS_LINK}
