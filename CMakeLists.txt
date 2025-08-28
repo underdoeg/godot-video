@@ -107,19 +107,19 @@ ExternalProject_Add(
 ## WE need shared and static libs, static for final link, shared to have ffmpeg autodetect in configure work
 
 # LIBVA
-#set(LIBVA_DIR ${CMAKE_BINARY_DIR}/libva)
-#ExternalProject_Add(
-#        libva
-#        GIT_REPOSITORY https://github.com/intel/libva.git
-#        GIT_TAG 2.22.0
-#        GIT_SHALLOW true
-#        PREFIX ${LIBVA_DIR}
-#        INSTALL_DIR ${LIBS_INSTALL}
-#        #        CONFIGURE_COMMAND echo <INSTALL_DIR>
-#        CONFIGURE_COMMAND cd <SOURCE_DIR> && ./autogen.sh --prefix=<INSTALL_DIR> --libdir=<INSTALL_DIR>/lib --enable-static --enable-pic
-#        BUILD_COMMAND make -j -C <SOURCE_DIR>
-#        INSTALL_COMMAND make -C <SOURCE_DIR> install
-#)
+set(LIBVA_DIR ${CMAKE_BINARY_DIR}/libva)
+ExternalProject_Add(
+        libva
+        GIT_REPOSITORY https://github.com/intel/libva.git
+        GIT_TAG master
+        GIT_SHALLOW true
+        PREFIX ${LIBVA_DIR}
+        INSTALL_DIR ${LIBS_INSTALL}
+        #        CONFIGURE_COMMAND echo <INSTALL_DIR>
+        CONFIGURE_COMMAND cd <SOURCE_DIR> && ./autogen.sh --prefix=<INSTALL_DIR> --libdir=<INSTALL_DIR>/lib --enable-static --enable-pic
+        BUILD_COMMAND make -j -C <SOURCE_DIR>
+        INSTALL_COMMAND make -C <SOURCE_DIR> install
+)
 
 # LIBXCB
 set(LIBXCB_DIR_STATIC ${CMAKE_BINARY_DIR}/libxcb-static)
@@ -307,9 +307,10 @@ else ()
     target_link_libraries(${LIBNAME} PRIVATE godot-cpp
             libavformat.a libavcodec.a libavdevice.a libavutil.a libavfilter.a libswscale.a swresample.a
             x264.a x265.a lzma.a bz2_static.a z.a
-#            libva.a libva-drm.a libva-glx.a libva-wayland.a libva-x11.a
-            libxcb.a libxcb-dri3.a
-            va va-drm va-x11 va-wayland xcb-dri3 # OpenCL
+            #libva.a libva-drm.a libva-glx.a libva-wayland.a libva-x11.a
+            # libxcb.a libxcb-dri3.a
+            xcb xcb-dri3
+            va va-drm va-x11 va-wayland # OpenCL
             # link system libva, no idea how to use the static libs platform independent
             vulkan vpx aom va fdk-aac mp3lame dav1d opus GLX_mesa va-drm va-x11 vdpau vorbis vorbisenc numa
     )

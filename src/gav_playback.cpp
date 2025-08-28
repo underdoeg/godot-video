@@ -38,13 +38,13 @@ void GAVPlayback::_bind_methods() {
 GAVPlayback::~GAVPlayback() {
 	GAVPlayback::_stop();
 	av_packet_unref(pkt);
-	// if (thread.joinable()) {
-	// 	thread.join();
-	// }
-	if (video_codec_ctx)
-		avcodec_free_context(&video_codec_ctx);
-	if (audio_codec_ctx)
-		avcodec_free_context(&audio_codec_ctx);
+	// // if (thread.joinable()) {
+	// // 	thread.join();
+	// // }
+	// if (video_codec_ctx)
+	// 	avcodec_free_context(&video_codec_ctx);
+	// if (audio_codec_ctx)
+	// 	avcodec_free_context(&audio_codec_ctx);
 
 	// if (audio_buffer) {
 	// 	av_freep(audio_buffer);
@@ -55,42 +55,97 @@ bool GAVPlayback::load(const String &file_path) {
 	if (Engine::get_singleton()->is_editor_hint()) {
 		return false;
 	}
+	const auto splits = file_path.split("/");
+	filename = splits[splits.size() - 1];
+	file_path_requested = file_path;
+	if (texture_public.is_valid()) {
+		texture_public->set_texture_rd_rid(RID());
+	}
+	init();
+
+	return true;
+}
+
+// void GAVPlayback::thread_func() {
+// 	UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "Starting video thread");
+// 	while (!request_stop) {
+// 	}
+// }
+void GAVPlayback::read_next_packet() {
+	// read the next frame in the file if all frame handlers are ready for a new frame
+	bool all_handlers_ready = true;
+	for (const auto &val : frame_handlers | std::views::values) {
+		if (!val.is_ready()) {
+			all_handlers_ready = false;
+			break;
+		}
+	}
+
+	if (!all_handlers_ready) {
+		// cannot handle a new packet yet
+		return;
+	}
+
+	const auto ret = av_read_frame(fmt_ctx, pkt);
+	if (ret == AVERROR_EOF) {
+		if (do_loop) {
+			// TODO: not that efficient to recreate the entire video pipeline
+			init();
+			return;
+		}
+		decode_is_done = true;
+		av_packet_unref(pkt);
+		return;
+	}
+	if (ff_ok(ret) && frame_handlers.contains(pkt->stream_index)) {
+		frame_handlers.at(pkt->stream_index).handle(pkt);
+	} else {
+		av_packet_unref(pkt);
+	}
+}
+
+bool GAVPlayback::init() {
+	if (!file_path_requested) {
+		return false;
+	}
+
 	if (!decode_rd) {
 		decode_rd = RenderingServer::get_singleton()->get_rendering_device();
-		// decode_rd = RenderingServer::get_singleton()->create_local_rendering_device();
 	}
 	if (!conversion_rd) {
 		conversion_rd = decode_rd; // RenderingServer::get_singleton()->create_local_rendering_device();
 	}
 
+	cleanup();
+
 	// conversion_rd = RenderingServer::get_singleton()->get_rendering_device();
 
-	const String path = ProjectSettings::get_singleton()->globalize_path(file_path);
-	UtilityFunctions::print("GAVPlayback::load ", path);
+	const String path = ProjectSettings::get_singleton()->globalize_path(file_path_requested);
+	UtilityFunctions::print(filename, ": ", "GAVPlayback::load ", path);
 
 	AVDictionary *options = nullptr;
 	// av_dict_set(&options, "loglevel", "debug", 0);
 	// av_log_set_level(AV_LOG_DEBUG);
 
 	if (!ff_ok(avformat_open_input(&fmt_ctx, path.ascii().ptr(), nullptr, &options))) {
-		UtilityFunctions::printerr("GAVPlayback could not open: ", path);
+		UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "GAVPlayback could not open: ", path);
 		return false;
 	}
 
 	if (!ff_ok(avformat_find_stream_info(fmt_ctx, nullptr))) {
-		UtilityFunctions::printerr("GAVPlayback could not find stream information.");
+		UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "GAVPlayback could not find stream information.");
 		return false;
 	}
 
 	// device list reports as not implemented
 	// if (!ff_ok(avdevice_list_devices(fmt_ctx, &devices))) {
-	// 	UtilityFunctions::printerr("GAVPlayback could not list devices.");
+	// 	UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "GAVPlayback could not list devices.");
 	// 	return false;
 	// }
 	//
 	// for (int i = 0; i < devices->nb_devices; i++) {
 	// 	auto dev = devices->devices[i];
-	// 	UtilityFunctions::print("potential decoding device: ", dev->device_name);
+	// 	UtilityFunctions::print(filename, ": ", "potential decoding device: ", dev->device_name);
 	// }
 
 	// // Display some basic information about the file and streams
@@ -112,63 +167,31 @@ bool GAVPlayback::load(const String &file_path) {
 	}
 
 	if (has_video()) {
-		UtilityFunctions::print("GAVPlayback:: video stream index: ", video_stream_index);
+		UtilityFunctions::print(filename, ": ", "GAVPlayback:: video stream index: ", video_stream_index);
 		if (!init_video()) {
 			return false;
 		}
 	}
 	if (has_audio()) {
-		UtilityFunctions::print("GAVPlayback:: audio stream index: ", audio_stream_index);
+		UtilityFunctions::print(filename, ": ", "GAVPlayback:: audio stream index: ", audio_stream_index);
 		if (!init_audio()) {
 			return false;
 		}
 	} else {
-		UtilityFunctions::print("GAVPlayback:: no audio stream found");
+		UtilityFunctions::print(filename, ": ", "GAVPlayback:: no audio stream found");
 	}
+
+	file_path_loaded = file_path_requested;
 
 	return true;
 }
-
-// void GAVPlayback::thread_func() {
-// 	UtilityFunctions::printerr("Starting video thread");
-// 	while (!request_stop) {
-// 	}
-// }
-void GAVPlayback::read_next_packet() {
-	// read the next frame in the file if all frame handlers are ready for a new frame
-	bool all_handlers_ready = true;
-	for (const auto &val : frame_handlers | std::views::values) {
-		if (!val.is_ready()) {
-			all_handlers_ready = false;
-			break;
-		}
-	}
-
-	if (!all_handlers_ready) {
-		// cannot handle a new packet yet
-		return;
-	}
-
-	const auto ret = av_read_frame(fmt_ctx, pkt);
-	if (ret == AVERROR_EOF) {
-		decode_is_done = true;
-		av_packet_unref(pkt);
-		return;
-	}
-	if (ff_ok(ret) && frame_handlers.contains(pkt->stream_index)) {
-		frame_handlers.at(pkt->stream_index).handle(pkt);
-	} else {
-		av_packet_unref(pkt);
-	}
-}
-
 bool GAVPlayback::init_video() {
 	// determine sensible prefered codec
 	if (!av_vk_video_supported(decode_rd)) {
 		// this is a dummy check ATM, it will always return false, needs godot with video extension loaded
 		// auto detect v dpau or vaapi /nvidia or intel
 		const auto device_vendor = conversion_rd->get_device_vendor_name().to_lower();
-		UtilityFunctions::print("Device vendopr ", device_vendor);
+		UtilityFunctions::print(filename, ": ", "Device vendopr ", device_vendor);
 		if (device_vendor == "nvidia" || device_vendor == "amd") {
 			hw_preferred = AV_HWDEVICE_TYPE_VDPAU;
 		} else {
@@ -180,24 +203,24 @@ bool GAVPlayback::init_video() {
 	AVCodecParameters *codecpar = fmt_ctx->streams[video_stream_index]->codecpar;
 	const AVCodec *decoder = avcodec_find_decoder(codecpar->codec_id);
 	if (!decoder) {
-		UtilityFunctions::printerr("Video Decoder not found");
+		UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "Video Decoder not found");
 		return false;
 	}
 	// Print codec information
 	// std::cout << "Video codec: " << avcodec_get_name(codecpar->codec_id) << std::endl;
 	// std::cout << "Width: " << codecpar->width << " Height: " << codecpar->height << std::endl;
 	// std::cout << "Bitrate: " << codecpar->bit_rate << std::endl;
-	UtilityFunctions::print("Video codec: ", avcodec_get_name(codecpar->codec_id));
-	UtilityFunctions::print("Video size: ", codecpar->width, "x", codecpar->height);
+	UtilityFunctions::print(filename, ": ", "Video codec: ", avcodec_get_name(codecpar->codec_id));
+	UtilityFunctions::print(filename, ": ", "Video size: ", codecpar->width, "x", codecpar->height);
 
 	video_codec_ctx = avcodec_alloc_context3(nullptr);
 	if (!video_codec_ctx) {
-		UtilityFunctions::printerr("avcodec_alloc_context3 failed");
+		UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "avcodec_alloc_context3 failed");
 		return false;
 	}
 
 	if (!ff_ok(avcodec_parameters_to_context(video_codec_ctx, fmt_ctx->streams[video_stream_index]->codecpar))) {
-		UtilityFunctions::printerr("avcodec_parameters_to_context failed: ");
+		UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "avcodec_parameters_to_context failed: ");
 		avcodec_free_context(&video_codec_ctx);
 		return false;
 	}
@@ -211,41 +234,41 @@ bool GAVPlayback::init_video() {
 	const AVCodecHWConfig *config = nullptr;
 	while ((config = avcodec_get_hw_config(decoder, i++)) != nullptr) {
 		configs.push_back(config);
-		UtilityFunctions::print("Detected hw device ", av_hwdevice_get_type_name(config->device_type));
+		UtilityFunctions::print(filename, ": ", "Detected hw device ", av_hwdevice_get_type_name(config->device_type));
 	}
 
 	if (configs.empty()) {
-		UtilityFunctions::printerr("GAVPlayback:: no hardware video decoders found");
+		UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "GAVPlayback:: no hardware video decoders found");
 		return false;
 	}
 
-	UtilityFunctions::print("Detected ", configs.size(), " video decoding devices");
+	UtilityFunctions::print(filename, ": ", "Detected ", configs.size(), " video decoding devices");
 
 	// prefer a vulkan decoder
 	for (const auto &c : configs) {
 		if (c->device_type == hw_preferred) {
 			accel_config = c;
-			UtilityFunctions::print("using preferred hw device ", av_hwdevice_get_type_name(hw_preferred));
+			UtilityFunctions::print(filename, ": ", "using preferred hw device ", av_hwdevice_get_type_name(hw_preferred));
 			break;
 		}
 	}
 
 	auto create_hw_dev = [&](const AVCodecHWConfig *conf) {
 		// return false;
-		UtilityFunctions::print("Trying to setup HW device: ", av_hwdevice_get_type_name(conf->device_type));
+		UtilityFunctions::print(filename, ": ", "Trying to setup HW device: ", av_hwdevice_get_type_name(conf->device_type));
 		if (conf->device_type == AV_HWDEVICE_TYPE_VULKAN) {
 			video_codec_ctx->hw_device_ctx = av_vk_create_device(decode_rd);
 			if (!video_codec_ctx->hw_device_ctx) {
-				UtilityFunctions::printerr("av_vk_create_device failed");
+				UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "av_vk_create_device failed");
 				return false;
 			}
 		} else if (!ff_ok(av_hwdevice_ctx_create(&video_codec_ctx->hw_device_ctx, conf->device_type, nullptr, nullptr, 0))) {
-			UtilityFunctions::printerr("Could not create HW device");
+			UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "Could not create HW device");
 			video_codec_ctx->hw_device_ctx = nullptr;
 			return false;
 		}
 		// video_codec_ctx->pix_fmt = conf->pix_fmt;
-		UtilityFunctions::print("hw device created");
+		UtilityFunctions::print(filename, ": ", "hw device created");
 		return true;
 	};
 
@@ -258,7 +281,7 @@ bool GAVPlayback::init_video() {
 	if (!accel_config) {
 		// just take the first one that works
 		// accel_config = configs[0];
-		// UtilityFunctions::print("preferred HW device not found ", av_hwdevice_get_type_name(hw_preferred), " - using: ", av_hwdevice_get_type_name(accel_config->device_type));
+		// UtilityFunctions::print(filename, ": ", "preferred HW device not found ", av_hwdevice_get_type_name(hw_preferred), " - using: ", av_hwdevice_get_type_name(accel_config->device_type));
 		for (const auto &c : configs) {
 			if (c->device_type == hw_preferred) {
 				// already tried above
@@ -272,7 +295,7 @@ bool GAVPlayback::init_video() {
 	}
 
 	// if (!video_codec_ctx->hw_device_ctx) {
-	// 	UtilityFunctions::printerr("No HW device found, need to fallback to SW decoding but that is a TODO");
+	// 	UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "No HW device found, need to fallback to SW decoding but that is a TODO");
 	// 	return false;
 	// }
 	// }
@@ -290,7 +313,7 @@ bool GAVPlayback::init_video() {
 	// if (accel_config->device_type == AV_HWDEVICE_TYPE_VAAPI) {
 	// 	video_codec_ctx->hw_device_ctx =  av_hwdevice_ctx_alloc(AV_HWDEVICE_TYPE_VAAPI);
 	// 	if (!video_codec_ctx->hw_device_ctx) {
-	// 		UtilityFunctions::printerr("av_hwdevice_ctx_alloc failed");
+	// 		UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "av_hwdevice_ctx_alloc failed");
 	// 		return false;
 	// 	}
 	// 	auto wctx = reinterpret_cast<AVHWDeviceContext*>(video_codec_ctx->hw_device_ctx);
@@ -304,7 +327,7 @@ bool GAVPlayback::init_video() {
 	if (video_codec_ctx->hw_device_ctx) {
 		auto frames = av_hwframe_ctx_alloc(video_codec_ctx->hw_device_ctx);
 		if (!frames) {
-			UtilityFunctions::printerr("Failed to allocate HW frame context.");
+			UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "Failed to allocate HW frame context.");
 			return false;
 		}
 		auto *ctx = reinterpret_cast<AVHWFramesContext *>(frames->data);
@@ -320,7 +343,7 @@ bool GAVPlayback::init_video() {
 		auto sw_format = hw_frames_const->valid_sw_formats[0];
 		for (AVPixelFormat *p = hw_frames_const->valid_sw_formats;
 				*p != AV_PIX_FMT_NONE; p++) {
-			// UtilityFunctions::print("HW decoder pixel format detected: ", av_get_pix_fmt_name(*p));
+			// UtilityFunctions::print(filename, ": ", "HW decoder pixel format detected: ", av_get_pix_fmt_name(*p));
 			// if (*p == AV_PIX_FMT_BGRA) {
 			// 	sw_format = *p;
 			// }
@@ -330,29 +353,39 @@ bool GAVPlayback::init_video() {
 			}
 		}
 		// just use the first one for the moment
-		UtilityFunctions::print("Using sw format ", av_get_pix_fmt_name(sw_format));
+		UtilityFunctions::print(filename, ": ", "Using sw format ", av_get_pix_fmt_name(sw_format));
 		ctx->sw_format = sw_format;
 
 		if (av_hwframe_ctx_init(frames) != 0) {
-			UtilityFunctions::printerr("Failed to initialize HW frame context.");
+			UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "Failed to initialize HW frame context.");
 			// av_buffer_unref(&frames);
 			// return false;
 			return false;
 		}
-		UtilityFunctions::print("Created video decoder context HW device.");
+		UtilityFunctions::print(filename, ": ", "Created video decoder context HW device.");
 		video_codec_ctx->hw_frames_ctx = av_buffer_ref(frames);
 	} else {
-		UtilityFunctions::print("using software decoder");
+		UtilityFunctions::print(filename, ": ", "using software decoder");
 	}
-	// UtilityFunctions::print("frame format is: ", av_get_pix_fmt_name(codec_ctx->sw_format));
+	// UtilityFunctions::print(filename, ": ", "frame format is: ", av_get_pix_fmt_name(codec_ctx->sw_format));
 
 	if (!ff_ok(avcodec_open2(video_codec_ctx, decoder, nullptr))) {
-		UtilityFunctions::print("Couldn't open codec %s: %s", avcodec_get_name(video_codec_ctx->codec_id));
+		UtilityFunctions::print(filename, ": ", "Couldn't open codec %s: %s", avcodec_get_name(video_codec_ctx->codec_id));
 		avcodec_free_context(&video_codec_ctx);
 		return false;
 	}
 
-	texture.setup(video_codec_ctx, conversion_rd);
+	texture = std::make_shared<GAVTexture>();
+	auto tex_rid = texture->setup(video_codec_ctx, conversion_rd);
+	if (!tex_rid.is_valid()) {
+		UtilityFunctions::printerr(filename, ": ", "Failed to setup texture");
+		return false;
+	}
+
+	if (!texture_public.is_valid()) {
+		texture_public.instantiate();
+	}
+	texture_public->set_texture_rd_rid(tex_rid);
 
 	frame_handlers.emplace(video_stream_index, PacketDecoder(video_codec_ctx, [&](auto frame) {
 		auto time = frame_time(frame);
@@ -378,20 +411,20 @@ bool GAVPlayback::init_audio() {
 	const AVCodec *decoder = avcodec_find_decoder(codecpar->codec_id);
 	const auto codec_name = avcodec_get_name(codecpar->codec_id);
 	if (!decoder) {
-		UtilityFunctions::printerr("Audio Decoder not found: ", codec_name);
+		UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "Audio Decoder not found: ", codec_name);
 		return false;
 	}
-	UtilityFunctions::print("Audio Codec: ", codec_name);
+	UtilityFunctions::print(filename, ": ", "Audio Codec: ", codec_name);
 	// std::cout << "Audio Bitrate: " << codecpar->bit_rate << std::endl;
 
 	audio_codec_ctx = avcodec_alloc_context3(nullptr);
 	if (!audio_codec_ctx) {
-		UtilityFunctions::printerr("avcodec_alloc_context3 failed for audio");
+		UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "avcodec_alloc_context3 failed for audio");
 		return false;
 	}
 
 	if (!ff_ok(avcodec_parameters_to_context(audio_codec_ctx, fmt_ctx->streams[audio_stream_index]->codecpar))) {
-		UtilityFunctions::printerr("avcodec_parameters_to_context failed for audio");
+		UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "avcodec_parameters_to_context failed for audio");
 		avcodec_free_context(&audio_codec_ctx);
 		return false;
 	}
@@ -400,12 +433,12 @@ bool GAVPlayback::init_audio() {
 	audio_codec_ctx->request_sample_fmt = out_sample_fmt;
 
 	if (!ff_ok(avcodec_open2(audio_codec_ctx, decoder, nullptr))) {
-		UtilityFunctions::print("Couldn't open audio codec %s: %s", avcodec_get_name(audio_codec_ctx->codec_id));
+		UtilityFunctions::print(filename, ": ", "Couldn't open audio codec %s: %s", avcodec_get_name(audio_codec_ctx->codec_id));
 		avcodec_free_context(&audio_codec_ctx);
 		return false;
 	}
 
-	UtilityFunctions::print("Created audio decoder");
+	UtilityFunctions::print(filename, ": ", "Created audio decoder");
 
 	// create resampler
 	if (!audio_resampler) {
@@ -426,7 +459,7 @@ bool GAVPlayback::init_audio() {
 			0, nullptr);
 
 	if (!ff_ok(swr_init(audio_resampler))) {
-		UtilityFunctions::printerr("Failed to initialize audio resampler");
+		UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "Failed to initialize audio resampler");
 		swr_free(&audio_resampler);
 		return false;
 	}
@@ -444,13 +477,13 @@ bool GAVPlayback::init_audio() {
 		// std::cout << frame->sample_rate << " - " << audio_frame->sample_rate << std::endl;
 
 		if (!ff_ok(swr_convert_frame(audio_resampler, audio_frame.get(), frame.get()))) {
-			UtilityFunctions::printerr("Failed to convert audio resampled data");
+			UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "Failed to convert audio resampled data");
 			return true;
 		}
 
 		//
 		if (audio_frame->format != out_sample_fmt) {
-			UtilityFunctions::printerr("Audio resampled data format doesn't match");
+			UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "Audio resampled data format doesn't match");
 			return true;
 		}
 
@@ -472,13 +505,13 @@ GAVPlayback::Clock::time_point GAVPlayback::frame_time(const AVFramePtr &frame) 
 	// (av_q2d(video.av_stream->time_base) * double(pts)) : double(pts) * 1e-6
 	auto seconds = std::chrono::duration<double>(frame->best_effort_timestamp * av_q2d(video_codec_ctx->pkt_timebase));
 	auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(seconds);
-	// UtilityFunctions::print("millis: ", millis.count());
+	// UtilityFunctions::print(filename, ": ", "millis: ", millis.count());
 
 	// auto frame_time = std::chrono::duration<double>(pts_seconds);
 	if (waiting_for_start_time) {
 		start_time = Clock::now() - millis;
 		waiting_for_start_time = false;
-		UtilityFunctions::print("start time set");
+		UtilityFunctions::print(filename, ": ", "start time set");
 	}
 
 	return start_time + millis;
@@ -490,13 +523,35 @@ void GAVPlayback::set_state(State new_state) {
 		waiting_for_start_time = true;
 	}
 }
+void GAVPlayback::cleanup() {
+	UtilityFunctions::print(filename, ": ", "Cleanup");
+	if (fmt_ctx)
+		avformat_close_input(&fmt_ctx);
+	if (video_codec_ctx)
+		avcodec_free_context(&video_codec_ctx);
+	if (audio_codec_ctx)
+		avcodec_free_context(&audio_codec_ctx);
+	fmt_ctx = nullptr;
+	video_codec_ctx = audio_codec_ctx = nullptr;
+	video_frame_to_show.reset();
+	audio_frame.reset();
+	frame_handlers.clear();
+}
 void GAVPlayback::_stop() {
-	request_stop = true;
+	// UtilityFunctions::print(filename, ": ", "Stopping playback");
+	set_state(STOPPED);
 }
 
 void GAVPlayback::_play() {
+	if (!file_path_requested) {
+		UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "Cannot play. no filepath given");
+		return;
+	}
+	if (file_path_requested != file_path_loaded) {
+		init();
+	}
 	if (!has_video() && !has_audio()) {
-		UtilityFunctions::printerr("Cannot play. No video or audio stream");
+		UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "Cannot play. No video or audio stream");
 		return;
 	}
 	set_state(State::PLAYING);
@@ -520,15 +575,15 @@ void GAVPlayback::_update(double p_delta) {
 
 	// process might have given us a new video frame, update_from_vulkan the texture
 	if (video_frame_to_show) {
-		// UtilityFunctions::print(video_frame_to_show->width, "x", video_frame_to_show->height);
+		// UtilityFunctions::print(filename, ": ", video_frame_to_show->width, "x", video_frame_to_show->height);
 		if (accel_config) {
 			if (accel_config->device_type == AV_HWDEVICE_TYPE_VULKAN) {
-				texture.update_from_vulkan(video_frame_to_show);
+				texture->update_from_vulkan(video_frame_to_show);
 			} else {
-				texture.update_from_hw(video_frame_to_show);
+				texture->update_from_hw(video_frame_to_show);
 			}
 		} else {
-			texture.update_from_sw(video_frame_to_show);
+			texture->update_from_sw(video_frame_to_show);
 		}
 		video_frame_to_show.reset();
 	}
@@ -543,11 +598,14 @@ void GAVPlayback::_update(double p_delta) {
 			}
 		}
 		if (all_done) {
-			set_state(STOPPED);
-			if (finished_callback) {
-				finished_callback();
+			if (!do_loop) {
+				UtilityFunctions::print(filename, ": ", "all done");
+				_stop();
+				if (finished_callback) {
+					finished_callback();
+				}
+				emit_signal("finished");
 			}
-			emit_signal("finished");
 		}
 	}
 }
@@ -561,29 +619,32 @@ bool GAVPlayback::_is_paused() const {
 	return state == State::PAUSED;
 }
 double GAVPlayback::_get_length() const {
-	UtilityFunctions::print("TODO get length");
+	UtilityFunctions::print(filename, ": ", "TODO get length");
 	return video_info.duration;
 }
 double GAVPlayback::_get_playback_position() const {
-	UtilityFunctions::print("TODO get playback position");
+	UtilityFunctions::print(filename, ": ", "TODO get playback position");
 	return 0;
 }
 void GAVPlayback::_seek(double p_time) {
-	UtilityFunctions::printerr("TODO: seek");
+	UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "TODO: seek, it probably does not work right ATM.");
 	// TODO convert p_Time to video timestamp format, maybe this is right, doubt it though
 	auto pts = p_time / av_q2d(video_codec_ctx->pkt_timebase);
 	avformat_seek_file(fmt_ctx, -1, INT64_MIN, pts, pts, 0);
 }
 
 void GAVPlayback::_set_audio_track(int32_t p_idx) {
-	UtilityFunctions::print("set audio track ", p_idx);
+	UtilityFunctions::print(filename, ": ", "set audio track ", p_idx);
 	if (p_idx != 0) {
-		UtilityFunctions::printerr("set_audio_track > 0 is not supported");
+		UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "set_audio_track > 0 is not supported");
 	}
 }
 
 Ref<Texture2D> GAVPlayback::_get_texture() const {
-	return texture.get_texture();
+	if (!texture_public.is_valid()) {
+		texture_public.instantiate();
+	}
+	return texture_public;
 }
 
 int32_t GAVPlayback::_get_channels() const {

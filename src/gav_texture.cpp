@@ -35,30 +35,37 @@ struct VkFunctions {
 static VkFunctions *vkf = nullptr;
 
 GAVTexture::GAVTexture() {
-	texture.instantiate();
 }
 GAVTexture::~GAVTexture() {
+	UtilityFunctions::print("-------------------- cleanup");
 	if (texture_rid_main.is_valid()) {
 		RenderingServer::get_singleton()->get_rendering_device()->free_rid(texture_rid_main);
 	}
-	if (conversion_shader.is_valid()) {
-		rd->free_rid(conversion_shader);
+	// shaders are shared and reused
+	// if (conversion_shader.is_valid()) {
+	// 	rd->free_rid(conversion_shader);
+	// }
+
+	if (conversion_pipeline.is_valid()) {
+		rd->free_rid(conversion_pipeline);
 	}
+
 	if (texture_rid.is_valid()) {
 		rd->free_rid(texture_rid);
 	}
+
 	for (auto &b : planes) {
 		if (b.is_valid()) {
 			rd->free_rid(b);
-			b = RID();
 		}
 	}
 }
 
-Ref<Texture2DRD> GAVTexture::setup(AVCodecContext *_ctx, RenderingDevice *_rd) {
-	if (texture.is_valid() && texture->get_texture_rd_rid().is_valid()) {
-		UtilityFunctions::print("TODO cleanup old texture");
-	}
+RID GAVTexture::setup(AVCodecContext *_ctx, RenderingDevice *_rd) {
+	// if (texture.is_valid() && texture->get_texture_rd_rid().is_valid()) {
+	// 	UtilityFunctions::print("TODO cleanup old texture");
+	// }
+
 	codec_ctx = _ctx;
 	rd = _rd;
 
@@ -67,6 +74,20 @@ Ref<Texture2DRD> GAVTexture::setup(AVCodecContext *_ctx, RenderingDevice *_rd) {
 	// auto *frames = reinterpret_cast<AVHWFramesContext *>(codec_ctx->hw_frames_ctx->data);
 
 	// UtilityFunctions::print("reported pixel format on setup is ", av_get_pix_fmt_name(pixel_format));
+	pipeline_format = AV_PIX_FMT_NONE;
+
+	// if (texture.is_valid()) {
+	// 	if (width == codec_ctx->width && height == codec_ctx->height) {
+	// 		return texture;
+	// 	}
+
+	// if (texture_rid.is_valid()) {
+	// 	rd->free_rid(texture_rid);
+	// }
+	// if (texture_rid_main.is_valid()) {
+	// RenderingServer::get_singleton()->get_rendering_device()->free_rid(texture_rid_main);
+	// }
+	// }
 
 	width = codec_ctx->width;
 	height = codec_ctx->height;
@@ -102,28 +123,30 @@ Ref<Texture2DRD> GAVTexture::setup(AVCodecContext *_ctx, RenderingDevice *_rd) {
 
 	auto view = memnew(RDTextureView);
 
+	// if (!texture_rid.is_valid()) {
 	texture_rid = rd->texture_create(format, view);
-	if (!texture_rid) {
+	// }
+	if (!texture_rid.is_valid()) {
 		UtilityFunctions::printerr("Could not create texture");
-		return texture;
+		return {};
 	}
 
 	const auto rd_main = RenderingServer::get_singleton()->get_rendering_device();
 	if (rd_main == rd) {
-		UtilityFunctions::print("AV Texture is using the main rendering device");
-		texture->set_texture_rd_rid(texture_rid);
-	} else {
-		UtilityFunctions::print("AV Texture is not using the main rendering device");
-		// expose local texture to main rd device
-		auto vk_texture = rd->get_driver_resource(RenderingDevice::DRIVER_RESOURCE_TEXTURE, texture_rid, 0);
-		texture_rid_main = rd_main->texture_create_from_extension(RenderingDevice::TEXTURE_TYPE_2D,
-				format->get_format(), format->get_samples(), format->get_usage_bits(),
-				vk_texture, format->get_width(), format->get_height(), format->get_depth(), format->get_array_layers());
-		//argument removed for compatibility with godot 4.4. , format->get_mipmaps());
-		texture->set_texture_rd_rid(texture_rid_main);
+		// UtilityFunctions::print("AV Texture is using the main rendering device");
+		// texture->set_texture_rd_rid(texture_rid);
+		return texture_rid;
 	}
+	// UtilityFunctions::print("AV Texture is not using the main rendering device");
+	// expose local texture to main rd device
+	auto vk_texture = rd->get_driver_resource(RenderingDevice::DRIVER_RESOURCE_TEXTURE, texture_rid, 0);
+	texture_rid_main = rd_main->texture_create_from_extension(RenderingDevice::TEXTURE_TYPE_2D,
+			format->get_format(), format->get_samples(), format->get_usage_bits(),
+			vk_texture, format->get_width(), format->get_height(), format->get_depth(), format->get_array_layers());
+	//argument removed for compatibility with godot 4.4. , format->get_mipmaps());
+	// texture->set_texture_rd_rid(texture_rid_main);
+	return texture_rid_main;
 
-	return texture;
 	// the pixel format  reported might change on the first frame, so we create the shader in update_from_vulkan
 	// auto pixel_format = frames->sw_format;
 }
@@ -131,6 +154,15 @@ Ref<Texture2DRD> GAVTexture::setup(AVCodecContext *_ctx, RenderingDevice *_rd) {
 bool GAVTexture::setup_pipeline(AVPixelFormat pixel_format) {
 	if (pipeline_format == pixel_format) {
 		return true;
+	}
+
+	if (conversion_pipeline.is_valid()) {
+		rd->free_rid(conversion_pipeline);
+	}
+	for (auto &b : planes) {
+		if (b.is_valid()) {
+			rd->free_rid(b);
+		}
 	}
 
 	// auto *hw_dev = reinterpret_cast<AVHWDeviceContext *>(codec_ctx->hw_device_ctx->data);
@@ -250,6 +282,10 @@ bool GAVTexture::setup_pipeline(AVPixelFormat pixel_format) {
 			uniforms.push_back(u);
 		}
 		conversion_shader_uniform_set = rd->uniform_set_create(uniforms, conversion_shader, 0);
+		if (!conversion_shader_uniform_set.is_valid()) {
+			UtilityFunctions::printerr("failed to create shader uniform set");
+			return false;
+		}
 		conversion_pipeline = rd->compute_pipeline_create(conversion_shader);
 	} else {
 		UtilityFunctions::printerr("Could not bind textures to conversion shader, shader is invalid");
@@ -260,7 +296,19 @@ bool GAVTexture::setup_pipeline(AVPixelFormat pixel_format) {
 }
 void GAVTexture::run_conversion_shader() {
 	// run the conversion shader
-	if (!test_copy && conversion_shader.is_valid() && conversion_shader_uniform_set.is_valid()) {
+	if (!conversion_shader.is_valid()) {
+		UtilityFunctions::printerr("Conversion shader is invalid");
+		return;
+	}
+	if (!conversion_shader_uniform_set.is_valid()) {
+		UtilityFunctions::printerr("Conversion shader uniform set is invalid");
+		return;
+	}
+	if (!conversion_pipeline.is_valid()) {
+		UtilityFunctions::printerr("Conversion pipeline is invalid");
+		return;
+	}
+	if (!test_copy) {
 		// calculate invocation size
 		auto compute = rd->compute_list_begin();
 		rd->compute_list_bind_compute_pipeline(compute, conversion_pipeline);
@@ -271,8 +319,6 @@ void GAVTexture::run_conversion_shader() {
 			rd->submit();
 			rd->sync();
 		}
-	} else {
-		UtilityFunctions::printerr("Conversion shader or uniform set is invalid");
 	}
 }
 
@@ -472,15 +518,6 @@ void GAVTexture::update_from_vulkan(AVFramePtr frame) {
 	run_conversion_shader();
 }
 void GAVTexture::update_from_sw(AVFramePtr frame) {
-	// if (!setup_pipeline(frames->sw_format)) {
-	// 	UtilityFunctions::printerr("failed to setup render pipeline");
-	// 	return;
-	// }
-	//
-	// for (int i = 0; i < num_planes; i++) {
-	// 	auto img = frame->
-	// }
-
 	if (!setup_pipeline(static_cast<enum AVPixelFormat>(frame->format))) { //frames->sw_format)) {
 		UtilityFunctions::printerr("failed to setup render pipeline");
 		return;
@@ -514,7 +551,7 @@ void GAVTexture::update_from_sw(AVFramePtr frame) {
 }
 
 void GAVTexture::update_from_hw(const AVFramePtr &hw_frame) {
-	auto *frames = reinterpret_cast<AVHWFramesContext *>(codec_ctx->hw_frames_ctx->data);
+	// auto *frames = reinterpret_cast<AVHWFramesContext *>(codec_ctx->hw_frames_ctx->data);
 
 	if (!conversion_frame) {
 		conversion_frame = av_frame_ptr();

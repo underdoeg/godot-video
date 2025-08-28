@@ -13,8 +13,8 @@ extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavdevice/avdevice.h>
 #include <libavformat/avformat.h>
-#include <libswresample/swresample.h>
 #include <libavutil/hwcontext.h>
+#include <libswresample/swresample.h>
 }
 
 class GAVPlayback : public godot::VideoStreamPlayback {
@@ -27,6 +27,7 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 	static void _bind_methods();
 
 	using Clock = std::chrono::high_resolution_clock;
+
 
 	~GAVPlayback() override;
 
@@ -45,7 +46,10 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 	bool video_ctx_ready = false;
 	bool audio_ctx_ready = false;
 
-	GAVTexture texture;
+	mutable godot::Ref<godot::Texture2DRD> texture_public;
+
+	// TODO: maybe reuse existing texture
+	std::shared_ptr<GAVTexture> texture;
 
 	VideoInfo video_info;
 
@@ -57,6 +61,11 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 
 	State state = State::STOPPED;
 
+	godot::String filename;
+	godot::String file_path_requested;
+	godot::String file_path_loaded;
+
+	bool init();
 	bool init_video();
 	[[nodiscard]] bool has_video() const { return video_stream_index >= 0; }
 	bool init_audio();
@@ -81,11 +90,6 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 	std::atomic_bool request_stop = false;
 	int max_frame_buffer_size = 4;
 
-	struct Frame {
-		AVFrame *frame = nullptr;
-		Clock::time_point timestamp;
-	};
-
 	void set_state(State state);
 	Clock::time_point start_time;
 	bool waiting_for_start_time = false;
@@ -93,6 +97,8 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 
 	// frame handlers for specific stream indices (usually two, one video, one audio)
 	std::map<int, PacketDecoder> frame_handlers;
+
+	void cleanup();
 
 public:
 	void _stop() override;
@@ -111,5 +117,6 @@ public:
 
 	bool load(const godot::String &file_path);
 
+	bool do_loop = false;
 	std::function<void()> finished_callback;
 };

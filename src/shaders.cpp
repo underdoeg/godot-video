@@ -5,9 +5,16 @@
 
 #include "shaders.h"
 
+#include <map>
+
 using namespace godot;
 
-RID compile_shader(RenderingDevice *rd, const String& glsl, const String& name) {
+RID compile_shader(RenderingDevice *rd, const String &glsl, const String &name) {
+	static std::map<String, RID> shader_cache;
+	if (shader_cache.contains(name)) {
+		return shader_cache.at(name);
+	}
+
 	auto src = memnew(RDShaderSource);
 	src->set_language(RenderingDevice::SHADER_LANGUAGE_GLSL);
 	src->set_stage_source(RenderingDevice::SHADER_STAGE_COMPUTE, glsl);
@@ -20,15 +27,16 @@ RID compile_shader(RenderingDevice *rd, const String& glsl, const String& name) 
 		return {};
 	}
 	UtilityFunctions::print("created shader ", name);
+	shader_cache[name] = shader;
 	return shader;
 }
 
 RID yuv420(RenderingDevice *rd, Vector2i size) {
-	static RID cache = {};
-	if (cache.is_valid()) {
-		UtilityFunctions::print("returning cached yuv420 shader");
-		return cache;
-	}
+	// static RID cache = {};
+	// if (cache.is_valid()) {
+	// 	UtilityFunctions::print("returning cached yuv420 shader");
+	// 	return cache;
+	// }
 
 	String s = R"(
 		#version 450
@@ -88,21 +96,20 @@ RID yuv420(RenderingDevice *rd, Vector2i size) {
 		}
 	)";
 
-	Dictionary replace;
-	// replace.set("width", size.x);
-	// replace.set("height", size.y);
-	s = s.format(replace);
-	cache = compile_shader(rd, s, "yuv420");
-	return cache;
+	// Dictionary replace;
+	// // replace.set("width", size.x);
+	// // replace.set("height", size.y);
+	// s = s.format(replace);
+	return compile_shader(rd, s, "yuv420");
+	// return cache;
 }
 
-
 RID nv12(RenderingDevice *rd, Vector2i size) {
-	static RID cache = {};
-	if (cache.is_valid()) {
-		UtilityFunctions::print("returning cached nv12 shader");
-		return cache;
-	}
+	// static RID cache = {};
+	// if (cache.is_valid()) {
+	// 	UtilityFunctions::print("returning cached nv12 shader");
+	// 	return cache;
+	// }
 
 	String s = R"(
 		#version 450
@@ -162,23 +169,23 @@ RID nv12(RenderingDevice *rd, Vector2i size) {
 			//float g = y - 0.39465 * u - 0.58060 * v;
 			//float b = y + 2.03211  * u;
 
-			//vec3 rgb = vec3(y,u-.5,v-.5) * color_matrix;
-			vec3 rgb = vec3(y,y,y);
+			vec3 rgb = vec3(y,u-.5,v-.5) * color_matrix;
+			//vec3 rgb = vec3(y,y,y);
 			imageStore(result, texel, vec4(rgb, 1));
 			//imageStore(result, texel, vec4(y,u,v, 1));
 		}
 	)";
 
-	cache = compile_shader(rd, s, "nv12");
-	return cache;
+	return compile_shader(rd, s, "nv12");
+	// return cache;
 }
 
 godot::RID p010le(godot::RenderingDevice *rd, godot::Vector2i size) {
-	static RID cache = {};
-	if (cache.is_valid()) {
-		UtilityFunctions::print("returning cached p010le shader");
-		return cache;
-	}
+	// static RID cache = {};
+	// if (cache.is_valid()) {
+	// 	UtilityFunctions::print("returning cached p010le shader");
+	// 	return cache;
+	// }
 
 	String s = R"(
 		#version 450
@@ -219,17 +226,16 @@ godot::RID p010le(godot::RenderingDevice *rd, godot::Vector2i size) {
 		}
 	)";
 
-	cache = compile_shader(rd, s, "p010le");
-	return cache;
+	return compile_shader(rd, s, "p010le");
+	// return cache;
 }
 
-
 godot::RID p016le(godot::RenderingDevice *rd, godot::Vector2i size) {
-	static RID cache = {};
-	if (cache.is_valid()) {
-		UtilityFunctions::print("returning cached p016le shader");
-		return cache;
-	}
+	// static RID cache = {};
+	// if (cache.is_valid()) {
+	// 	UtilityFunctions::print("returning cached p016le shader");
+	// 	return cache;
+	// }
 
 	String s = R"(
 		#version 450
@@ -270,6 +276,6 @@ godot::RID p016le(godot::RenderingDevice *rd, godot::Vector2i size) {
 		}
 	)";
 
-	cache = compile_shader(rd, s, "p016le");
-	return cache;
+	return compile_shader(rd, s, "p016le");
+	// return cache;
 }
