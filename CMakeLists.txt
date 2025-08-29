@@ -325,7 +325,7 @@ else ()
             #libva.a libva-drm.a libva-glx.a libva-wayland.a libva-x11.a
             #libxcb.a libxcb-dri3.a
             # xcb xcb-dri3
-           va va-drm va-x11 va-wayland # OpenCL
+            va va-drm va-x11 va-wayland # OpenCL
             # link system libva, no idea how to use the static libs platform independent
             X11 Xfixes
             vulkan vpx aom fdk-aac mp3lame dav1d opus GLX_mesa vdpau vorbis vorbisenc numa

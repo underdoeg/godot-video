@@ -191,8 +191,8 @@ bool GAVPlayback::init_video() {
 		// auto detect v dpau or vaapi /nvidia or intel
 		const auto device_vendor = conversion_rd->get_device_vendor_name().to_lower();
 		UtilityFunctions::print(filename, ": ", "Device vendopr ", device_vendor);
-		if (device_vendor == "nvidia" ) {
-			hw_preferred = AV_HWDEVICE_TYPE_CUDA;
+		if (device_vendor == "nvidia") {
+			hw_preferred = AV_HWDEVICE_TYPE_VDPAU;
 		} else {
 			hw_preferred = AV_HWDEVICE_TYPE_VAAPI;
 		}
