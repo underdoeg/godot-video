@@ -63,7 +63,7 @@ bool GAVPlayback::load(const String &file_path) {
 	if (texture_public.is_valid()) {
 		texture_public->set_texture_rd_rid(RID());
 	}
-
+	init();
 	return true;
 }
 
@@ -202,7 +202,8 @@ bool GAVPlayback::init_video() {
 	}
 
 	video_ctx_ready = false;
-	AVCodecParameters *codecpar = fmt_ctx->streams[video_stream_index]->codecpar;
+	auto stream = fmt_ctx->streams[video_stream_index];
+	AVCodecParameters *codecpar = stream->codecpar;
 	const AVCodec *decoder = avcodec_find_decoder(codecpar->codec_id);
 	if (!decoder) {
 		UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "Video Decoder not found");
@@ -221,12 +222,12 @@ bool GAVPlayback::init_video() {
 		return false;
 	}
 
-	if (!ff_ok(avcodec_parameters_to_context(video_codec_ctx, fmt_ctx->streams[video_stream_index]->codecpar))) {
+	if (!ff_ok(avcodec_parameters_to_context(video_codec_ctx, stream->codecpar))) {
 		UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "avcodec_parameters_to_context failed: ");
 		avcodec_free_context(&video_codec_ctx);
 		return false;
 	}
-	video_codec_ctx->pkt_timebase = fmt_ctx->streams[video_stream_index]->time_base;
+	video_codec_ctx->pkt_timebase = stream->time_base;
 
 	std::vector<const AVCodecHWConfig *> configs;
 
@@ -399,19 +400,19 @@ bool GAVPlayback::init_video() {
 	}
 
 	texture = std::make_shared<GAVTexture>();
-	auto tex_rid = texture->setup(video_codec_ctx, conversion_rd);
+	tex_rid = texture->setup(video_codec_ctx, conversion_rd);
 	if (!tex_rid.is_valid()) {
 		UtilityFunctions::printerr(filename, ": ", "Failed to setup texture");
 		return false;
 	}
-
-	if (!texture_public.is_valid()) {
-		texture_public.instantiate();
+	if (texture_public.is_valid()) {
+		texture_public->set_texture_rd_rid(tex_rid);
 	}
-	texture_public->set_texture_rd_rid(tex_rid);
 
-	frame_handlers.emplace(video_stream_index, PacketDecoder(video_codec_ctx, [&](auto frame) {
-		auto time = frame_time(frame);
+	const auto time_base = stream->time_base;
+
+	frame_handlers.emplace(video_stream_index, PacketDecoder(video_codec_ctx, [&, time_base](auto frame) {
+		auto time = frame_time(frame, time_base);
 		if (time <= Clock::now()) {
 			// frame should be displayed. do it now;
 			video_frame_to_show = frame;
@@ -430,7 +431,9 @@ bool GAVPlayback::init_audio() {
 	// Set output format to stereo
 	constexpr AVSampleFormat out_sample_fmt = AV_SAMPLE_FMT_FLT;
 
-	AVCodecParameters *codecpar = fmt_ctx->streams[audio_stream_index]->codecpar;
+	const auto audio_stream = fmt_ctx->streams[audio_stream_index];
+	AVCodecParameters *codecpar = audio_stream->codecpar;
+
 	const AVCodec *decoder = avcodec_find_decoder(codecpar->codec_id);
 	const auto codec_name = avcodec_get_name(codecpar->codec_id);
 	if (!decoder) {
@@ -446,13 +449,13 @@ bool GAVPlayback::init_audio() {
 		return false;
 	}
 
-	if (!ff_ok(avcodec_parameters_to_context(audio_codec_ctx, fmt_ctx->streams[audio_stream_index]->codecpar))) {
+	if (!ff_ok(avcodec_parameters_to_context(audio_codec_ctx, audio_stream->codecpar))) {
 		UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "avcodec_parameters_to_context failed for audio");
 		avcodec_free_context(&audio_codec_ctx);
 		return false;
 	}
 
-	audio_codec_ctx->pkt_timebase = fmt_ctx->streams[audio_stream_index]->time_base;
+	audio_codec_ctx->pkt_timebase = audio_stream->time_base;
 	audio_codec_ctx->request_sample_fmt = out_sample_fmt;
 
 	if (!ff_ok(avcodec_open2(audio_codec_ctx, decoder, nullptr))) {
@@ -487,10 +490,11 @@ bool GAVPlayback::init_audio() {
 		return false;
 	}
 
-	frame_handlers.emplace(audio_stream_index, PacketDecoder(audio_codec_ctx, [&](auto frame) {
+	const auto time_base = audio_stream->time_base;
+	frame_handlers.emplace(audio_stream_index, PacketDecoder(audio_codec_ctx, [&, time_base](auto frame) {
 
-		// TODO, do we need tiem checks for audio?
-		auto time = frame_time(frame);
+		// audio could be handled in a thread
+		auto time = frame_time(frame, time_base);
 		if (time > Clock::now()) {
 			return false;
 		}
@@ -523,14 +527,17 @@ bool GAVPlayback::init_audio() {
 	return true;
 }
 
-GAVPlayback::Clock::time_point GAVPlayback::frame_time(const AVFramePtr &frame) {
+GAVPlayback::Clock::time_point GAVPlayback::frame_time(const AVFramePtr &frame, AVRational time_base) {
 	// const auto pts = frame->pts;
 	// (av_q2d(video.av_stream->time_base) * double(pts)) : double(pts) * 1e-6
-	auto seconds = std::chrono::duration<double>(frame->best_effort_timestamp * av_q2d(video_codec_ctx->pkt_timebase));
+	// auto pts = frame->best_effort_timestamp;
+	auto pts = static_cast<double>(frame->best_effort_timestamp);
+	pts *= av_q2d(time_base);
+	auto seconds = std::chrono::duration<double>(pts);
+	// auto seconds = std::chrono::duration<double>(static_cast<double>(ts) * av_q2d(video_codec_ctx->pkt_timebase));
 	auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(seconds);
-	// UtilityFunctions::print(filename, ": ", "millis: ", millis.count());
+	// UtilityFunctions::print(filename, ": ", "seconds: ", seconds.count(), " ", pts, " ", av_q2d(time_base));
 
-	// auto frame_time = std::chrono::duration<double>(pts_seconds);
 	if (waiting_for_start_time) {
 		start_time = Clock::now() - millis;
 		waiting_for_start_time = false;
@@ -664,9 +671,12 @@ void GAVPlayback::_set_audio_track(int32_t p_idx) {
 }
 
 Ref<Texture2D> GAVPlayback::_get_texture() const {
+	UtilityFunctions::print("get texture");
 	if (!texture_public.is_valid()) {
+		UtilityFunctions::print(filename, ": ", "create texture");
 		texture_public.instantiate();
 	}
+	texture_public->set_texture_rd_rid(tex_rid);
 	return texture_public;
 }
 

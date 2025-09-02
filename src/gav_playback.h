@@ -40,12 +40,14 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 
 	int video_stream_index = -1;
 	int audio_stream_index = -1;
+
 	static godot::RenderingDevice *decode_rd;
 	static godot::RenderingDevice *conversion_rd;
 
 	bool video_ctx_ready = false;
 	bool audio_ctx_ready = false;
 
+	godot::RID tex_rid;
 	mutable godot::Ref<godot::Texture2DRD> texture_public;
 
 	// TODO: maybe reuse existing texture
@@ -93,7 +95,7 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 	void set_state(State state);
 	Clock::time_point start_time;
 	bool waiting_for_start_time = false;
-	Clock::time_point frame_time(const AVFramePtr &frame);
+	Clock::time_point frame_time(const AVFramePtr &frame, AVRational time_base);
 
 	// frame handlers for specific stream indices (usually two, one video, one audio)
 	std::map<int, PacketDecoder> frame_handlers;

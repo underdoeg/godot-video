@@ -32,10 +32,10 @@ class PacketDecoder {
 	FrameHandler frame_handler;
 	godot::String name;
 
-	int max_frames = 5;
+	int max_frames = 1;
 
 public:
-	explicit PacketDecoder(AVCodecContext *ctx, FrameHandler handler, int max_frames = 7);
+	explicit PacketDecoder(AVCodecContext *ctx, FrameHandler handler, int max_frames = 10);
 
 	[[nodiscard]] bool is_ready() const;
 	[[nodiscard]] bool queue_empty() const {
