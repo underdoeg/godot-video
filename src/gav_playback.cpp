@@ -19,6 +19,8 @@ extern "C" {
 #include <libavdevice/avdevice.h>
 #include <libavformat/avformat.h>
 #include <libavutil/channel_layout.h>
+#include <libavutil/hwcontext_vaapi.h>
+#include <libavutil/hwcontext_vdpau.h>
 #include <libavutil/pixdesc.h>
 }
 
@@ -196,6 +198,7 @@ bool GAVPlayback::init_video() {
 		} else {
 			hw_preferred = AV_HWDEVICE_TYPE_VAAPI;
 		}
+		// hw_preferred = AV_HWDEVICE_TYPE_VULKAN;
 	}
 
 	video_ctx_ready = false;
@@ -253,19 +256,41 @@ bool GAVPlayback::init_video() {
 	}
 
 	auto create_hw_dev = [&](const AVCodecHWConfig *conf) {
+		AVBufferRef *hw_device_ctx = NULL;
 		UtilityFunctions::print(filename, ": ", "Trying to setup HW device: ", av_hwdevice_get_type_name(conf->device_type));
+		// THis only works with the patched godot version, TODO check
 		if (conf->device_type == AV_HWDEVICE_TYPE_VULKAN) {
 			video_codec_ctx->hw_device_ctx = av_vk_create_device(decode_rd);
 			if (!video_codec_ctx->hw_device_ctx) {
 				UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "av_vk_create_device failed");
 				return false;
 			}
-		} else if (!ff_ok(av_hwdevice_ctx_create(&video_codec_ctx->hw_device_ctx, conf->device_type, nullptr, nullptr, 0))) {
-			UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "Could not create HW device");
-			video_codec_ctx->hw_device_ctx = nullptr;
-			return false;
+		} else {
+			if (!ff_ok(av_hwdevice_ctx_create(&hw_device_ctx, conf->device_type, nullptr, nullptr, 0))) {
+				UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "Could not create HW device");
+				video_codec_ctx->hw_device_ctx = nullptr;
+				return false;
+			}
+			video_codec_ctx->hw_device_ctx = av_buffer_ref(hw_device_ctx);
 		}
-		// video_codec_ctx->pix_fmt = conf->pix_fmt;
+
+		// else {
+		// 	video_codec_ctx->hw_device_ctx = av_hwdevice_ctx_alloc(conf->device_type);
+		// 	if (conf->device_type == AV_HWDEVICE_TYPE_VAAPI) {
+		// 		auto vaapi_ctx = reinterpret_cast<AVVAAPIDeviceContext*>(video_codec_ctx->hw_device_ctx);
+		// 	}
+		// 	if (!video_codec_ctx->hw_device_ctx) {
+		// 		UtilityFunctions::printerr("Could not allocate HW device context");
+		// 		return false;
+		// 	}
+		// 	if (!av_hwdevice_ctx_init(video_codec_ctx->hw_device_ctx)) {
+		// 		UtilityFunctions::printerr("Could not initialize HW device");
+		// 		return false;
+		// 	}
+		// }
+
+		video_codec_ctx->pix_fmt = conf->pix_fmt;
+
 		UtilityFunctions::print(filename, ": ", "hw device created");
 		return true;
 	};
