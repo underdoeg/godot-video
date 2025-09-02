@@ -188,7 +188,7 @@ ExternalProject_Add(
         PREFIX ${FFNVENC_DIR}
         INSTALL_DIR ${LIBS_INSTALL}
         CONFIGURE_COMMAND ""
-#        CONFIGURE_COMMAND cd <SOURCE_DIR>
+        #        CONFIGURE_COMMAND cd <SOURCE_DIR>
         BUILD_COMMAND ""
         #BUILD_COMMAND cd <SOURCE_DIR> && mkdir -p <INSTALL_DIR>/include && cp -r <SOURCE_DIR>/include/ffnvcodec <INSTALL_DIR>/include
         #${CMAKE_COMMAND} -E env PREFIX=${LIBS_INSTALL} make -C <INSTALL_DIR>/build install
@@ -302,12 +302,12 @@ if (DOC_XML)
 endif ()
 set(GODOT_PROJECT_BINARY_DIR "${PROJECT_SOURCE_DIR}/${GODOT_PROJECT_DIR}/bin/${GODOTCPP_PLATFORM}")
 
-set(USE_SYSTEM_FFMPEG OFF)
+set(USE_SYSTEM_FFMPEG OFF CACHE BOOL "Use system installed ffmpeg instead of building from source")
 
 if (USE_SYSTEM_FFMPEG)
     message("using system ffmpeg")
-    target_include_directories(${LIBNAME} PRIVATE ${LIBS_INCLUDE}) #${CMAKE_BINARY_DIR}/ffmpeg/src/ffmpeg
-    target_link_directories(${LIBNAME} PRIVATE ${LIBS_LINK})
+    #    target_include_directories(${LIBNAME} PRIVATE ${LIBS_INCLUDE}) #${CMAKE_BINARY_DIR}/ffmpeg/src/ffmpeg
+    #    target_link_directories(${LIBNAME} PRIVATE ${LIBS_LINK})
     target_link_libraries(${LIBNAME} PRIVATE godot-cpp
             va va-drm va-x11 va-wayland xcb-dri3
             drm Xext vdpau vulkan Xfixes X11-xcb
