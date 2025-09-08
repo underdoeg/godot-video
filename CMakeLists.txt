@@ -328,7 +328,7 @@ else ()
             va va-drm va-x11 va-wayland # OpenCL
             # link system libva, no idea how to use the static libs platform independent
             X11 Xfixes
-            vulkan vpx aom fdk-aac mp3lame dav1d opus GLX_mesa vdpau vorbis vorbisenc numa
+            vulkan vpx aom fdk-aac mp3lame dav1d opus vdpau vorbis vorbisenc numa
     )
 endif ()
 
