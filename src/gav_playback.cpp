@@ -193,12 +193,12 @@ bool GAVPlayback::init_video() {
 		// auto detect v dpau or vaapi /nvidia or intel
 		const auto device_vendor = conversion_rd->get_device_vendor_name().to_lower();
 		UtilityFunctions::print(filename, ": ", "Device vendopr ", device_vendor);
-		if (device_vendor == "nvidia") {
-			hw_preferred = AV_HWDEVICE_TYPE_VDPAU;
-		} else {
-			hw_preferred = AV_HWDEVICE_TYPE_VAAPI;
-		}
-		// hw_preferred = AV_HWDEVICE_TYPE_VULKAN;
+		// if (device_vendor == "nvidia") {
+		// 	hw_preferred = AV_HWDEVICE_TYPE_VULKAN;
+		// } else {
+		// 	hw_preferred = AV_HWDEVICE_TYPE_VAAPI;
+		// }
+		hw_preferred = AV_HWDEVICE_TYPE_VULKAN;
 	}
 
 	video_ctx_ready = false;
@@ -260,7 +260,7 @@ bool GAVPlayback::init_video() {
 		AVBufferRef *hw_device_ctx = NULL;
 		UtilityFunctions::print(filename, ": ", "Trying to setup HW device: ", av_hwdevice_get_type_name(conf->device_type));
 		// THis only works with the patched godot version, TODO check
-		if (conf->device_type == AV_HWDEVICE_TYPE_VULKAN) {
+		if (conf->device_type == AV_HWDEVICE_TYPE_VULKAN && GODOT_VULKAN_PATCHED) {
 			video_codec_ctx->hw_device_ctx = av_vk_create_device(decode_rd);
 			if (!video_codec_ctx->hw_device_ctx) {
 				UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "av_vk_create_device failed");
@@ -607,7 +607,7 @@ void GAVPlayback::_update(double p_delta) {
 	if (video_frame_to_show) {
 		// UtilityFunctions::print(filename, ": ", video_frame_to_show->width, "x", video_frame_to_show->height);
 		if (accel_config) {
-			if (accel_config->device_type == AV_HWDEVICE_TYPE_VULKAN) {
+			if (accel_config->device_type == AV_HWDEVICE_TYPE_VULKAN && GODOT_VULKAN_PATCHED) {
 				texture->update_from_vulkan(video_frame_to_show);
 			} else {
 				texture->update_from_hw(video_frame_to_show);

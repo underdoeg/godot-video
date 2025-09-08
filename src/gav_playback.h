@@ -17,6 +17,8 @@ extern "C" {
 #include <libswresample/swresample.h>
 }
 
+#define GODOT_VULKAN_PATCHED false
+
 class GAVPlayback : public godot::VideoStreamPlayback {
 	struct VideoInfo {
 		double duration;
