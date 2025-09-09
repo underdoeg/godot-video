@@ -561,5 +561,6 @@ void GAVTexture::update_from_hw(const AVFramePtr &hw_frame) {
 		return;
 	}
 
+
 	update_from_sw(conversion_frame);
 }

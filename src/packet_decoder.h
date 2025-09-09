@@ -44,4 +44,7 @@ public:
 
 	void handle(AVPacket *pkt);
 	void process();
+	auto num_frames() const {
+		return frames.size();
+	};
 };
