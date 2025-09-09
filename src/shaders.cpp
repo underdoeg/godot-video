@@ -42,7 +42,7 @@ RID yuv420(RenderingDevice *rd, Vector2i size) {
 		#version 450
 
 		// Invocations in the (x, y, z) dimension
-		layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+		layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 		// A binding to the buffer we create in our script
 		//layout(set = 0, binding = 0, std430) restrict buffer Y {
@@ -115,7 +115,7 @@ RID nv12(RenderingDevice *rd, Vector2i size) {
 		#version 450
 
 		// Invocations in the (x, y, z) dimension
-		layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+		layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 		layout (set=0, binding=0, rgba8) uniform image2D result;
 		layout (set=0, binding=1, r8) readonly uniform image2D Y;
@@ -154,16 +154,16 @@ RID nv12(RenderingDevice *rd, Vector2i size) {
 			//float u = texture(U, uv).g;
 			//float v = texture(V, uv).b;
 
-			mat3 color_matrix = mat3(
-				1,   0,       1.403,
-				1,  -0.344,  -0.714,
-				1,   1.770,   0
-			);
-
 			//mat3 color_matrix = mat3(
-            //    1,   0,       1.13983,
-            //    1,  -0.39465,  -0.58060,
-            //    1,   2.03211,   0);
+			//	1,   0,       1.403,
+			//	1,  -0.344,  -0.714,
+			//	1,   1.770,   0
+			//);
+
+			mat3 color_matrix = mat3(
+                1,   0,       1.13983,
+                1,  -0.39465,  -0.58060,
+                1,   2.03211,   0);
 
 			//float r = y + 1.13983 * v;
 			//float g = y - 0.39465 * u - 0.58060 * v;
@@ -171,6 +171,7 @@ RID nv12(RenderingDevice *rd, Vector2i size) {
 
 			vec3 rgb = vec3(y,u-.5,v-.5) * color_matrix;
 			//vec3 rgb = vec3(y,y,y);
+			//vec3 rgb = vec3(0, 1, 0);
 			imageStore(result, texel, vec4(rgb, 1));
 			//imageStore(result, texel, vec4(y,u,v, 1));
 		}
@@ -191,7 +192,7 @@ godot::RID p010le(godot::RenderingDevice *rd, godot::Vector2i size) {
 		#version 450
 
 		// Invocations in the (x, y, z) dimension
-		layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+		layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 		layout (set=0, binding=0, rgba8) uniform image2D result;
 		layout (set=0, binding=1, r8) readonly uniform image2D Y;
@@ -241,7 +242,7 @@ godot::RID p016le(godot::RenderingDevice *rd, godot::Vector2i size) {
 		#version 450
 
 		// Invocations in the (x, y, z) dimension
-		layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+		layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 		layout (set=0, binding=0, rgba8) uniform image2D result;
 		layout (set=0, binding=1, r8) readonly uniform image2D Y;

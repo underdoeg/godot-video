@@ -92,8 +92,9 @@ RID GAVTexture::setup(AVCodecContext *_ctx, RenderingDevice *_rd) {
 	height = codec_ctx->height;
 
 	UtilityFunctions::print("create texture of size ", width, "x", height);
-
-	if (width % 16 != 0 || height % 16 != 0) {
+	//
+	if (width % 8 != 0 || height % 8 != 0) {
+		// This is relevant because of the compute shader sizes
 		UtilityFunctions::printerr("video width and height should be divisible by 16. it might still work, but miss a few pixels");
 	}
 
@@ -312,7 +313,7 @@ void GAVTexture::run_conversion_shader() {
 		auto compute = rd->compute_list_begin();
 		rd->compute_list_bind_compute_pipeline(compute, conversion_pipeline);
 		rd->compute_list_bind_uniform_set(compute, conversion_shader_uniform_set, 0);
-		rd->compute_list_dispatch(compute, std::floor(width / 16), std::floor(height / 16), 1);
+		rd->compute_list_dispatch(compute, std::floor(width / 8), std::floor(height / 8), 1);
 		rd->compute_list_end();
 		if (rd != RenderingServer::get_singleton()->get_rendering_device()) {
 			rd->submit();
@@ -528,17 +529,22 @@ void GAVTexture::update_from_sw(AVFramePtr frame) {
 
 		// const auto byte_size = frame->linesize[0] * info.height;
 		// UtilityFunctions::print(frame->linesize[0], " ", info.line_size);
-
 		if (plane_buffers[i].size() < info.byte_size) {
 			plane_buffers[i].resize(info.byte_size);
 		}
+
 		auto src = frame->data[i];
 
 		// we expect tight lines without extra, but line_size of the frame can have additional padding. check for it
 		const auto line_size = frame->linesize[i];
+		// UtilityFunctions::print(info.line_size, " -- ", frame->linesize[i]);
 		if (line_size == info.line_size) {
 			memcpy(plane_buffers[i].ptrw(), src, info.byte_size);
-		} else {
+		}
+		else {
+			if (plane_buffers[i].size() < info.byte_size) {
+				plane_buffers[i].resize(info.byte_size);
+			}
 			// copy line for line
 			for (size_t y = 0; y < info.height; y++) {
 				memcpy(plane_buffers[i].ptrw() + info.line_size * y, src + line_size * y, info.line_size);
@@ -560,7 +566,6 @@ void GAVTexture::update_from_hw(const AVFramePtr &hw_frame) {
 		UtilityFunctions::printerr("Could not transfer_data from hw to sw");
 		return;
 	}
-
 
 	update_from_sw(conversion_frame);
 }

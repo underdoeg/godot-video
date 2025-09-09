@@ -36,6 +36,9 @@ RenderingDevice *GAVPlayback::conversion_rd = nullptr;
 void GAVPlayback::_bind_methods() {
 	ADD_SIGNAL(MethodInfo("finished"));
 }
+GAVPlayback::GAVPlayback() {
+	UtilityFunctions::print("Create new GAVPlayback");
+}
 
 GAVPlayback::~GAVPlayback() {
 	GAVPlayback::_stop();
@@ -193,12 +196,12 @@ bool GAVPlayback::init_video() {
 		// auto detect v dpau or vaapi /nvidia or intel
 		const auto device_vendor = conversion_rd->get_device_vendor_name().to_lower();
 		UtilityFunctions::print(filename, ": ", "Device vendopr ", device_vendor);
-		// if (device_vendor == "nvidia") {
-		// 	hw_preferred = AV_HWDEVICE_TYPE_VULKAN;
-		// } else {
-		// 	hw_preferred = AV_HWDEVICE_TYPE_VAAPI;
-		// }
-		hw_preferred = AV_HWDEVICE_TYPE_VULKAN;
+		if (device_vendor == "nvidia") {
+			hw_preferred = AV_HWDEVICE_TYPE_VDPAU;
+		} else {
+			hw_preferred = AV_HWDEVICE_TYPE_VULKAN;
+		}
+		// hw_preferred = AV_HWDEVICE_TYPE_VULKAN;
 	}
 
 	video_ctx_ready = false;
@@ -416,6 +419,8 @@ bool GAVPlayback::init_video() {
 		if (time <= Clock::now()) {
 			// frame should be displayed. do it now;
 			video_frame_to_show = frame;
+			auto pos = time - start_time;
+			progress_millis = std::chrono::duration_cast<std::chrono::milliseconds>(pos).count();
 			return true;
 		}
 		return false;
@@ -653,11 +658,11 @@ double GAVPlayback::_get_length() const {
 	return video_info.duration;
 }
 double GAVPlayback::_get_playback_position() const {
-	UtilityFunctions::print(filename, ": ", "TODO get playback position");
-	return 0;
+	// UtilityFunctions::print(filename, ": ", "TODO get playback position");
+	return progress_millis / 1000.0;
 }
 void GAVPlayback::_seek(double p_time) {
-	UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "TODO: seek, it probably does not work right ATM.");
+	// UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "TODO: seek, it probably does not work right ATM.");
 	// TODO convert p_Time to video timestamp format, maybe this is right, doubt it though
 	auto pts = p_time / av_q2d(video_codec_ctx->pkt_timebase);
 	avformat_seek_file(fmt_ctx, -1, INT64_MIN, pts, pts, 0);

@@ -4,22 +4,26 @@ extends Control
 @onready var dynamic_video:GAVStream = GAVStream.new()
 
 func _ready() -> void:
-	#dynamic_video.file = "res://4k_h264_30p.mp4"
-#
-	#%video_dynamic.stream = dynamic_video
-	#%video_dynamic.loop = true
-	#%video_dynamic.play()
-	#
-	#dynamic_video.finished.connect(func():print("done"))
-	#
-	#%video_tex.texture = %video.get_video_texture()
-	#%video_tex2.texture = %video.get_video_texture()
+	dynamic_video.file = "res://4k_h264_30p.mp4"
+
+	%video_dynamic.stream = dynamic_video
+	%video_dynamic.loop = true
+	%video_dynamic.play()
+	
+	dynamic_video.finished.connect(func():print("done"))
+	
+	%video_tex.texture = %video.get_video_texture()
+	%video_tex2.texture = %video.get_video_texture()
 		#
-	#%video_dynamic2.stream = dynamic_video
-	#%video_dynamic2.play()
-	#
-	#_on_timer_timeout()
+	%video_dynamic2.stream = dynamic_video
+	
+	%video_dynamic2.play()
+	
+	_on_timer_timeout()
 	pass
+
+func _process(delta):
+	$seconds.text = str(%video.stream_position) + "s"
 
 func _on_timer_timeout():
 	$Timer.wait_time = randf_range(3, 12)
@@ -30,6 +34,11 @@ func _on_timer_timeout():
 func _input(event):
 	if event is InputEventKey:
 		if not event.pressed:
+			if event.keycode == KEY_R:
+				%video.stream = load("res://Adrian_Loop_360.mov")
+				%video.play()
+				%video_tex.texture = %video.get_video_texture()
+				%video_tex2.texture = %video.get_video_texture()
 			if event.keycode == KEY_C:
 				%video.stream.file = "res://8k_h265.mp4"
 				%video.play()
@@ -37,5 +46,7 @@ func _input(event):
 				# loading a new video, creates a new texture
 				%video_tex.texture = %video.get_video_texture()
 				%video_tex2.texture = %video.get_video_texture()
-			if event.keycode == KEY_P:
+			if event.keycode == KEY_SPACE:
 				%video.play()
+			if event.keycode == KEY_P:
+				print(%video.stream_position)

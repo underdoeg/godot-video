@@ -29,8 +29,6 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 	static void _bind_methods();
 
 	using Clock = std::chrono::high_resolution_clock;
-
-
 	~GAVPlayback() override;
 
 	AVFormatContext *fmt_ctx = nullptr;
@@ -82,6 +80,7 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 
 	// if set this frame will be sent to the renderer
 	AVFramePtr video_frame_to_show;
+	int64_t progress_millis;
 
 	// audio resampling
 	SwrContext *audio_resampler = nullptr;
@@ -105,6 +104,8 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 	void cleanup();
 
 public:
+	GAVPlayback();
+
 	void _stop() override;
 	void _play() override;
 	[[nodiscard]] bool _is_playing() const override;
