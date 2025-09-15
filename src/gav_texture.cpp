@@ -96,7 +96,7 @@ RID GAVTexture::setup(AVCodecContext *_ctx, RenderingDevice *_rd) {
 	//
 	if (width % 8 != 0 || height % 8 != 0) {
 		// This is relevant because of the compute shader sizes
-		UtilityFunctions::printerr("video width and height should be divisible by 16. it might still work, but miss a few pixels");
+		UtilityFunctions::printerr("video width and height should be divisible by 8. it might still work, but miss a few pixels");
 	}
 
 	// the output texture
@@ -222,7 +222,7 @@ bool GAVTexture::setup_pipeline(AVPixelFormat pixel_format) {
 			auto tex_format = RenderingDevice::DATA_FORMAT_R8_UNORM;
 
 			if (pixel_format == AV_PIX_FMT_P016LE
-				 // || (pixel_format == AV_PIX_FMT_YUV420P10LE)
+					// || (pixel_format == AV_PIX_FMT_YUV420P10LE)
 			) {
 				w /= 2;
 				tex_format = RenderingDevice::DATA_FORMAT_R16_UNORM;
