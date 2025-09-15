@@ -15,7 +15,7 @@ PacketDecoder::PacketDecoder(AVCodecContext *ctx, FrameHandler handler, int _max
 		frame_handler(std::move(handler)),
 		max_frames(_max_frames) {
 	name = avcodec_get_name(ctx->codec_id);
-	UtilityFunctions::print("Created PacketDecoder for ", name);
+	if (verbose_logging) UtilityFunctions::print("Created PacketDecoder for ", name);
 }
 
 bool PacketDecoder::is_ready() const {

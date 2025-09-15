@@ -91,7 +91,8 @@ RID GAVTexture::setup(AVCodecContext *_ctx, RenderingDevice *_rd) {
 	width = codec_ctx->width;
 	height = codec_ctx->height;
 
-	UtilityFunctions::print("create texture of size ", width, "x", height);
+	if (verbose_logging)
+		UtilityFunctions::print("create texture of size ", width, "x", height);
 	//
 	if (width % 8 != 0 || height % 8 != 0) {
 		// This is relevant because of the compute shader sizes
@@ -169,7 +170,8 @@ bool GAVTexture::setup_pipeline(AVPixelFormat pixel_format) {
 	// auto *vk = static_cast<AVVulkanDeviceContext *>(hw_dev->hwctx);
 	// auto *frames = reinterpret_cast<AVHWFramesContext *>(codec_ctx->hw_frames_ctx->data);
 
-	UtilityFunctions::print("setup pipeline for pixel format: ", av_get_pix_fmt_name(pixel_format));
+	if (verbose_logging)
+		UtilityFunctions::print("setup pipeline for pixel format: ", av_get_pix_fmt_name(pixel_format));
 	std::array<int, 4> line_sizes{ 0, 0, 0, 0 };
 	std::array<ptrdiff_t, 4> line_sizes_ptr;
 	std::array<size_t, 4> plane_sizes{ 0, 0, 0, 0 };
@@ -256,7 +258,7 @@ bool GAVTexture::setup_pipeline(AVPixelFormat pixel_format) {
 
 	// num_planes = 2;
 
-	UtilityFunctions::print("number of planes: ", num_planes, "  ", plane_sizes_str);
+	if (verbose_logging)UtilityFunctions::print("number of planes: ", num_planes, "  ", plane_sizes_str);
 
 	// // create the compute shader
 	if (pixel_format == AV_PIX_FMT_NV12) {

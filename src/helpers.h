@@ -11,6 +11,8 @@ extern "C" {
 #include <libavutil/frame.h>
 }
 
+constexpr bool verbose_logging = false;
+
 #include <godot_cpp/variant/utility_functions.hpp>
 
 inline bool ff_ok(int res) {
