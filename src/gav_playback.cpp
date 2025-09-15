@@ -194,9 +194,7 @@ bool GAVPlayback::init() {
 		if (verbose_logging)
 			UtilityFunctions::print(filename, ": ", "GAVPlayback:: no audio stream found");
 	}
-
 	file_path_loaded = file_path_requested;
-
 	return true;
 }
 bool GAVPlayback::init_video() {
@@ -386,7 +384,8 @@ bool GAVPlayback::init_video() {
 		auto sw_format = hw_frames_const->valid_sw_formats[0];
 		for (AVPixelFormat *p = hw_frames_const->valid_sw_formats;
 				*p != AV_PIX_FMT_NONE; p++) {
-			// UtilityFunctions::print(filename, ": ", "HW decoder pixel format detected: ", av_get_pix_fmt_name(*p));
+			if (verbose_logging)
+				UtilityFunctions::print(filename, ": ", "HW decoder pixel format detected: ", av_get_pix_fmt_name(*p));
 			// if (*p == AV_PIX_FMT_BGRA) {
 			// 	sw_format = *p;
 			// }

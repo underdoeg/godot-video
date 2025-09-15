@@ -104,6 +104,60 @@ RID yuv420(RenderingDevice *rd, Vector2i size) {
 	// return cache;
 }
 
+
+
+RID yuv420p10le(RenderingDevice *rd, Vector2i size) {
+	// static RID cache = {};
+	// if (cache.is_valid()) {
+	// 	UtilityFunctions::print("returning cached yuv420 shader");
+	// 	return cache;
+	// }
+
+	String s = R"(
+		#version 450
+
+		// Invocations in the (x, y, z) dimension
+		layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
+
+		layout (set=0, binding=0, rgba8) uniform image2D result;
+		layout (set=0, binding=1, r8) readonly uniform image2D Y;
+		layout (set=0, binding=2, r8) readonly uniform image2D U;
+		layout (set=0, binding=3, r8) readonly uniform image2D V;
+
+		// The code we want to execute in each invocation
+		void main() {
+			// gl_LocalInvocationID.xy
+			ivec2 texel = ivec2(gl_GlobalInvocationID.xy);
+
+			ivec2 texel_half = texel / 2;
+			ivec2 texel_u = texel_half;
+			ivec2 texel_v = texel_half;
+
+			float y = imageLoad(Y, texel).r;
+			float u = imageLoad(U, texel_u).r;
+			float v = imageLoad(V, texel_v).r;
+
+
+			mat3 color_matrix = mat3(
+				1,   0,       1.402,
+				1,  -0.344,  -0.714,
+				1,   1.772,   0
+			);
+
+			vec3 rgb = vec3(y,u-.5,v-.5) * color_matrix;
+			//vec3 rgb = vec3(u, u, u);
+			imageStore(result, texel, vec4(rgb, 1));
+		}
+	)";
+
+	// Dictionary replace;
+	// // replace.set("width", size.x);
+	// // replace.set("height", size.y);
+	// s = s.format(replace);
+	return compile_shader(rd, s, "yuv420p10le");
+	// return cache;
+}
+
 RID nv12(RenderingDevice *rd, Vector2i size) {
 	// static RID cache = {};
 	// if (cache.is_valid()) {
@@ -295,3 +349,4 @@ godot::RID p016le(godot::RenderingDevice *rd, godot::Vector2i size) {
 	return compile_shader(rd, s, "p016le");
 	// return cache;
 }
+

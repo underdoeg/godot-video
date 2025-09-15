@@ -4,8 +4,7 @@ extends Control
 @onready var dynamic_video:GAVStream = GAVStream.new()
 
 func _ready() -> void:
-	dynamic_video.file = "res://4k_h264_30p.mp4"
-
+	dynamic_video.file = "res://Andrea_MASTER.mp4"
 	%video_dynamic.stream = dynamic_video
 	%video_dynamic.loop = true
 	%video_dynamic.play()

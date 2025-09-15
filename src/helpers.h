@@ -10,8 +10,11 @@ extern "C" {
 #include <libavutil/error.h>
 #include <libavutil/frame.h>
 }
-
+#ifdef NDEBUG
 constexpr bool verbose_logging = false;
+#else
+constexpr bool verbose_logging = true;
+#endif
 
 #include <godot_cpp/variant/utility_functions.hpp>
 

@@ -221,7 +221,9 @@ bool GAVTexture::setup_pipeline(AVPixelFormat pixel_format) {
 			int w = line_size;
 			auto tex_format = RenderingDevice::DATA_FORMAT_R8_UNORM;
 
-			if (pixel_format == AV_PIX_FMT_P016LE) {
+			if (pixel_format == AV_PIX_FMT_P016LE
+				 // || (pixel_format == AV_PIX_FMT_YUV420P10LE)
+			) {
 				w /= 2;
 				tex_format = RenderingDevice::DATA_FORMAT_R16_UNORM;
 			}
@@ -258,7 +260,8 @@ bool GAVTexture::setup_pipeline(AVPixelFormat pixel_format) {
 
 	// num_planes = 2;
 
-	if (verbose_logging)UtilityFunctions::print("number of planes: ", num_planes, "  ", plane_sizes_str);
+	if (verbose_logging)
+		UtilityFunctions::print("number of planes: ", num_planes, "  ", plane_sizes_str);
 
 	// // create the compute shader
 	if (pixel_format == AV_PIX_FMT_NV12) {
@@ -269,6 +272,8 @@ bool GAVTexture::setup_pipeline(AVPixelFormat pixel_format) {
 		conversion_shader = p010le(rd, { width, height });
 	} else if (pixel_format == AV_PIX_FMT_P016LE) {
 		conversion_shader = p016le(rd, { width, height });
+	} else if (pixel_format == AV_PIX_FMT_YUV420P10LE) {
+		conversion_shader = yuv420p10le(rd, { width, height });
 	} else {
 		UtilityFunctions::printerr("unsupported pixel format: ", av_get_pix_fmt_name(pixel_format));
 	}
@@ -567,6 +572,23 @@ void GAVTexture::update_from_hw(const AVFramePtr &hw_frame) {
 
 	if (!conversion_frame) {
 		conversion_frame = av_frame_ptr();
+	}
+
+	// AVPixelFormat* formats = nullptr;
+	// av_hwframe_transfer_get_formats(hw_frame->hw_frames_ctx, AV_HWFRAME_TRANSFER_DIRECTION_FROM, &formats, 0);
+	// for (AVPixelFormat *p = formats;
+	// 			*p != AV_PIX_FMT_NONE; p++) {
+	// 	UtilityFunctions::print(av_get_pix_fmt_name(*p));
+	// }
+
+	// UtilityFunctions::print("Updating texture");
+	// UtilityFunctions::print("width = ", hw_frame->width);
+	// UtilityFunctions::print("height = ", hw_frame->height);
+	// UtilityFunctions::print("format = ", av_get_pix_fmt_name((AVPixelFormat)hw_frame->format));
+
+	if (!hw_frame->hw_frames_ctx) {
+		update_from_sw(hw_frame);
+		return;
 	}
 
 	if (!ff_ok(av_hwframe_transfer_data(conversion_frame.get(), hw_frame.get(), 0))) {
