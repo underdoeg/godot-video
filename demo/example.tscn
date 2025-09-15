@@ -1,7 +1,7 @@
 [gd_scene load_steps=3 format=3 uid="uid://dh0oj81pufivs"]
 
 [ext_resource type="Script" uid="uid://clmfltu5op357" path="res://example.gd" id="1_jdh55"]
-[ext_resource type="VideoStream" uid="uid://cu6f1llfvdssy" path="res://Adrian_Loop_360.mov" id="2_n51mc"]
+[ext_resource type="VideoStream" uid="uid://knqxlh71h51e" path="res://Andrea_MASTER.mp4" id="2_n51mc"]
 
 [node name="Control" type="Control"]
 layout_mode = 3

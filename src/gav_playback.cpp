@@ -42,6 +42,9 @@ GAVPlayback::GAVPlayback() {
 
 GAVPlayback::~GAVPlayback() {
 	GAVPlayback::_stop();
+	cleanup();
+	// av_frame_unref(audio_frame.get());
+	// av_frame_unref(video_frame_to_show.get());
 	av_packet_unref(pkt);
 	// // if (thread.joinable()) {
 	// // 	thread.join();
@@ -95,6 +98,7 @@ void GAVPlayback::read_next_packet() {
 		if (do_loop) {
 			// TODO: not that efficient to recreate the entire video pipeline
 			init();
+			av_packet_unref(pkt);
 			return;
 		}
 		decode_is_done = true;
@@ -140,6 +144,8 @@ bool GAVPlayback::init() {
 		UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "GAVPlayback could not find stream information.");
 		return false;
 	}
+
+	decode_is_done = false;
 
 	// device list reports as not implemented
 	// if (!ff_ok(avdevice_list_devices(fmt_ctx, &devices))) {
@@ -419,6 +425,7 @@ bool GAVPlayback::init_video() {
 		if (time <= Clock::now()) {
 			// frame should be displayed. do it now;
 			video_frame_to_show = frame;
+			// av_frame_copy(video_frame_to_show.get(), frame.get());
 			auto pos = time - start_time;
 			progress_millis = std::chrono::duration_cast<std::chrono::milliseconds>(pos).count();
 			return true;
@@ -476,16 +483,12 @@ bool GAVPlayback::init_audio() {
 		audio_resampler = swr_alloc();
 	}
 
-	// create an audio frame to hold converted data
-	audio_frame = av_frame_ptr();
-	audio_frame->format = out_sample_fmt;
-	audio_frame->ch_layout = codecpar->ch_layout;
-	audio_frame->sample_rate = codecpar->sample_rate;
-	audio_frame->nb_samples = 0;
+	auto channel_layout = codecpar->ch_layout;
+	auto sample_rate = codecpar->sample_rate;
 
 	// create the resampler
 	swr_alloc_set_opts2(&audio_resampler,
-			&audio_frame->ch_layout, static_cast<AVSampleFormat>(audio_frame->format), audio_frame->sample_rate,
+			&channel_layout, out_sample_fmt, sample_rate,
 			&audio_codec_ctx->ch_layout, audio_codec_ctx->sample_fmt, audio_codec_ctx->sample_rate,
 			0, nullptr);
 
@@ -495,15 +498,24 @@ bool GAVPlayback::init_audio() {
 		return false;
 	}
 
-	const auto time_base = audio_stream->time_base;
-	frame_handlers.emplace(audio_stream_index, PacketDecoder(audio_codec_ctx, [&, time_base](auto frame) {
+	UtilityFunctions::print("Create audio frame");
+	// create an audio frame to hold converted data
 
+	const auto time_base = audio_stream->time_base;
+	frame_handlers.emplace(audio_stream_index, PacketDecoder(audio_codec_ctx, [&, time_base, channel_layout, sample_rate](auto frame) {
 		// audio could be handled in a thread
 		auto time = frame_time(frame, time_base);
 		if (time > Clock::now()) {
 			return false;
 		}
 
+		if (!audio_frame) {
+			audio_frame = av_frame_ptr();
+		}
+
+		audio_frame->format = out_sample_fmt;
+		audio_frame->ch_layout = channel_layout;
+		audio_frame->sample_rate = sample_rate;
 		audio_frame->nb_samples = frame->nb_samples;
 		// std::cout << frame->sample_rate << " - " << audio_frame->sample_rate << std::endl;
 		// std::cout << frame->sample_rate << " - " << audio_frame->sample_rate << std::endl;
@@ -526,6 +538,7 @@ bool GAVPlayback::init_audio() {
 		buff.resize(byte_size / sizeof(float));
 		memcpy(buff.ptrw(), audio_frame->data[0], byte_size);
 		mix_audio(audio_frame->nb_samples, buff, 0);
+		av_frame_unref(audio_frame.get());
 		return true; }, 10));
 
 	audio_ctx_ready = true;
@@ -564,16 +577,22 @@ void GAVPlayback::cleanup() {
 		avformat_close_input(&fmt_ctx);
 	if (video_codec_ctx)
 		avcodec_free_context(&video_codec_ctx);
+	if (audio_resampler)
+		swr_free(&audio_resampler);
 	if (audio_codec_ctx)
 		avcodec_free_context(&audio_codec_ctx);
 	fmt_ctx = nullptr;
+	audio_resampler = nullptr;
+	audio_codec_ctx = nullptr;
+	audio_frame.reset();
 	video_codec_ctx = audio_codec_ctx = nullptr;
 	video_frame_to_show.reset();
-	audio_frame.reset();
+	// audio_frame.reset();
 	frame_handlers.clear();
+	UtilityFunctions::print(filename, ": ", "Cleanup done");
 }
 void GAVPlayback::_stop() {
-	// UtilityFunctions::print(filename, ": ", "Stopping playback");
+	UtilityFunctions::print(filename, ": ", "Stopping playback");
 	set_state(STOPPED);
 }
 

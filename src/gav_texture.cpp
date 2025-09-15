@@ -217,10 +217,16 @@ bool GAVTexture::setup_pipeline(AVPixelFormat pixel_format) {
 
 			// create texture planes
 			int w = line_size;
-			int h = byte_size / line_size;
+			auto tex_format = RenderingDevice::DATA_FORMAT_R8_UNORM;
+
+			if (pixel_format == AV_PIX_FMT_P016LE) {
+				w /= 2;
+				tex_format = RenderingDevice::DATA_FORMAT_R16_UNORM;
+			}
+			auto h = byte_size / line_size;
 			// if (h == 2)
 			// 	h = 1080;
-			plane_infos[i] = { w, h, 1, line_size, byte_size };
+			plane_infos[i] = { w, static_cast<int>(h), 1, line_size, byte_size };
 
 			Ref<RDTextureFormat> format;
 			format.instantiate();
@@ -234,7 +240,7 @@ bool GAVTexture::setup_pipeline(AVPixelFormat pixel_format) {
 					// RenderingDevice::TEXTURE_USAGE_CAN_COPY_FROM_BIT |
 					RenderingDevice::TEXTURE_USAGE_STORAGE_BIT |
 					RenderingDevice::TEXTURE_USAGE_CAN_UPDATE_BIT);
-			format->set_format(RenderingDevice::DATA_FORMAT_R8_UNORM);
+			format->set_format(tex_format);
 
 			auto view = memnew(RDTextureView);
 
@@ -322,7 +328,7 @@ void GAVTexture::run_conversion_shader() {
 	}
 }
 
-void GAVTexture::update_from_vulkan(AVFramePtr frame) {
+void GAVTexture::update_from_vulkan(const AVFramePtr &frame) {
 	// UtilityFunctions::print("update_from_vulkan texture");
 	if (!vkf) {
 		auto v = reinterpret_cast<VkInstance>(rd->get_driver_resource(RenderingDevice::DRIVER_RESOURCE_TOPMOST_OBJECT, {}, 0));
@@ -517,7 +523,7 @@ void GAVTexture::update_from_vulkan(AVFramePtr frame) {
 
 	run_conversion_shader();
 }
-void GAVTexture::update_from_sw(AVFramePtr frame) {
+void GAVTexture::update_from_sw(const AVFramePtr &frame) {
 	if (!setup_pipeline(static_cast<enum AVPixelFormat>(frame->format))) { //frames->sw_format)) {
 		UtilityFunctions::printerr("failed to setup render pipeline");
 		return;
@@ -540,8 +546,7 @@ void GAVTexture::update_from_sw(AVFramePtr frame) {
 		// UtilityFunctions::print(info.line_size, " -- ", frame->linesize[i]);
 		if (line_size == info.line_size) {
 			memcpy(plane_buffers[i].ptrw(), src, info.byte_size);
-		}
-		else {
+		} else {
 			if (plane_buffers[i].size() < info.byte_size) {
 				plane_buffers[i].resize(info.byte_size);
 			}

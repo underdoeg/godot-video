@@ -6,21 +6,21 @@ extends Control
 func _ready() -> void:
 	dynamic_video.file = "res://4k_h264_30p.mp4"
 
-	%video_dynamic.stream = dynamic_video
-	%video_dynamic.loop = true
-	%video_dynamic.play()
-	
-	dynamic_video.finished.connect(func():print("done"))
-	
-	%video_tex.texture = %video.get_video_texture()
-	%video_tex2.texture = %video.get_video_texture()
-		#
-	%video_dynamic2.stream = dynamic_video
-	
-	%video_dynamic2.play()
-	
-	_on_timer_timeout()
-	pass
+	#%video_dynamic.stream = dynamic_video
+	#%video_dynamic.loop = true
+	#%video_dynamic.play()
+	#
+	#dynamic_video.finished.connect(func():print("done"))
+	#
+	#%video_tex.texture = %video.get_video_texture()
+	#%video_tex2.texture = %video.get_video_texture()
+		##
+	#%video_dynamic2.stream = dynamic_video
+	#
+	#%video_dynamic2.play()
+	#
+	#_on_timer_timeout()
+	#pass
 
 func _process(delta):
 	$seconds.text = str(%video.stream_position) + "s"

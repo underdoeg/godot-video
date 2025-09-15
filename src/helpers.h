@@ -26,9 +26,8 @@ inline bool ff_ok(int res) {
 using AVFramePtr = std::shared_ptr<AVFrame>;
 
 inline AVFramePtr av_frame_ptr() {
-	const auto frame = av_frame_alloc();
-	return std::shared_ptr<AVFrame>(frame, [](auto f) {
-		// UtilityFunctions::print("AVFrame freed");
+	return std::shared_ptr<AVFrame>(av_frame_alloc(), [](auto f) {
+		// godot::UtilityFunctions::print("free av frame");
 		av_frame_free(&f);
 	});
 }

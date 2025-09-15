@@ -35,7 +35,7 @@ void PacketDecoder::handle(AVPacket *pkt) {
 	// break;
 	// }
 	// godot::UtilityFunctions::print("handle done");
-	av_packet_unref(pkt);
+	// av_packet_unref(pkt);
 }
 
 void PacketDecoder::process() {
@@ -64,4 +64,3 @@ void PacketDecoder::process() {
 		frames.push_back(frame);
 	}
 }
-

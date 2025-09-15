@@ -60,7 +60,7 @@ public:
 	// [[nodiscard]] godot::Ref<godot::Texture2DRD> get_texture() const {
 	// 	return texture;
 	// }
-	void update_from_vulkan(AVFramePtr frame);
-	void update_from_sw(AVFramePtr frame);
+	void update_from_vulkan(const AVFramePtr& frame);
+	void update_from_sw(const AVFramePtr &frame);
 	void update_from_hw(const AVFramePtr &shared);
 };

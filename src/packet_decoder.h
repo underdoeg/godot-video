@@ -14,7 +14,7 @@ extern "C" {
 #include <libavcodec/packet.h>
 }
 
-using FrameHandler = std::function<bool(AVFramePtr frame)>;
+using FrameHandler = std::function<bool(const AVFramePtr& frame)>;
 
 class PacketDecoder {
 	enum State {
@@ -25,10 +25,10 @@ class PacketDecoder {
 	State state = State::READY;
 	AVCodecContext *codec_context = nullptr;
 
-	std::deque<std::shared_ptr<AVFrame>> frames;
+	std::deque<std::shared_ptr<AVFrame>> frames = {};
 
 	// callback function takes the avFrame and has to unref it.
-	// return false if you dont w ant to use the frame
+	// return false if you dont want to use the frame
 	FrameHandler frame_handler;
 	godot::String name;
 
@@ -46,5 +46,8 @@ public:
 	void process();
 	auto num_frames() const {
 		return frames.size();
-	};
+	}
+	void clear() {
+		frames.clear();
+	}
 };

@@ -245,15 +245,20 @@ godot::RID p016le(godot::RenderingDevice *rd, godot::Vector2i size) {
 		layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 		layout (set=0, binding=0, rgba8) uniform image2D result;
-		layout (set=0, binding=1, r8) readonly uniform image2D Y;
-		layout (set=0, binding=2, r8) readonly uniform image2D UV;
+		layout (set=0, binding=1, r16) readonly uniform image2D Y;
+		layout (set=0, binding=2, r16) readonly uniform image2D UV;
 
 		// The code we want to execute in each invocation
 		void main() {
 			// gl_LocalInvocationID.xy
 			ivec2 texel = ivec2(gl_GlobalInvocationID.xy);
 
-			ivec2 texel_half = texel / 2;
+			//if(texel.x % 2 == 0 || texel.y % 2 == 0) {
+			//	return;
+			//}
+
+			ivec2 texel_y = texel; // ivec2(texel.x*2, texel.y);
+			ivec2 texel_half = ivec2(texel.x, texel.y/2);
 			ivec2 texel_u = texel_half;
 			ivec2 texel_v = texel_half;
 
@@ -261,7 +266,10 @@ godot::RID p016le(godot::RenderingDevice *rd, godot::Vector2i size) {
 			texel_u.x = texel.x - texel.x % 2;
 			texel_v.x = texel.x - texel.x % 2 + 1;
 
-			float y = imageLoad(Y, texel).r;
+			float y = imageLoad(Y, texel_y).r;
+			//float y2 = imageLoad(Y, texel_y + ivec2(1, 0)).r;
+
+
 			float u = imageLoad(UV, texel_u).r;
 			float v = imageLoad(UV, texel_v).r;
 
@@ -273,9 +281,16 @@ godot::RID p016le(godot::RenderingDevice *rd, godot::Vector2i size) {
 			);
 
 			vec3 rgb = vec3(y,u-.5,v-.5) * color_matrix;
+			//vec3 rgb = vec3(y, y, y);
 			imageStore(result, texel, vec4(rgb, 1));
 		}
 	)";
+
+
+// String s = R"(
+	//
+	// )";
+
 
 	return compile_shader(rd, s, "p016le");
 	// return cache;
