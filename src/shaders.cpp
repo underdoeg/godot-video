@@ -62,8 +62,8 @@ RID yuv420(RenderingDevice *rd, Vector2i size) {
 			ivec2 texel_half = texel / 2;
 
 			float y = imageLoad(Y, texel).r;
-			float u = imageLoad(U, texel).r;// - .5;
-			float v = imageLoad(V, texel).r;// - .5;
+			float u = imageLoad(U, texel_half).r;// - .5;
+			float v = imageLoad(V, texel_half).r;// - .5;
 
 			//float y = texture(Y, uv).r;
 			//float u = texture(U, uv).g;
@@ -75,9 +75,9 @@ RID yuv420(RenderingDevice *rd, Vector2i size) {
                 1,   1.772,   0);
 
 			vec3 rgb = vec3(y,u-.5,v-.5) * color_matrix;
+			//vec3 rgb = vec3(y,u,v);
 
-
-			imageStore(result, texel, vec4(y,u,v, 1));
+			imageStore(result, texel, vec4(rgb, 1));
 
 			//y = 1.1643*(y-0.0625);
 
@@ -103,8 +103,6 @@ RID yuv420(RenderingDevice *rd, Vector2i size) {
 	return compile_shader(rd, s, "yuv420");
 	// return cache;
 }
-
-
 
 RID yuv420p10le(RenderingDevice *rd, Vector2i size) {
 	// static RID cache = {};
@@ -340,13 +338,10 @@ godot::RID p016le(godot::RenderingDevice *rd, godot::Vector2i size) {
 		}
 	)";
 
-
-// String s = R"(
+	// String s = R"(
 	//
 	// )";
-
 
 	return compile_shader(rd, s, "p016le");
 	// return cache;
 }
-

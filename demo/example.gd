@@ -2,6 +2,7 @@ extends Control
 #@onready var av_video:AvVideo = $video
 
 @onready var dynamic_video:GAVStream = GAVStream.new()
+@onready var video = %video
 
 func _ready() -> void:
 	dynamic_video.file = "res://Andrea_MASTER.mp4"
@@ -22,7 +23,24 @@ func _ready() -> void:
 	pass
 
 func _process(delta):
-	$seconds.text = str(%video.stream_position) + "s"
+	if video:
+		$seconds.text = str(video.stream_position) + "s"
+
+func load_many():
+	for child in $container.get_children():
+		child.queue_free()
+		
+	#await get_tree().process_frame
+	#await get_tree().process_frame
+	#await get_tree().process_frame
+	
+	$container.columns = 10
+	for i in range(30):
+		var player = VideoStreamPlayer.new()
+		player.size = Vector2(20, 20)
+		$container.add_child(player)
+		player.stream = load("res://Adrian_Loop_360.mov")
+		player.play()
 
 func _on_timer_timeout():
 	$Timer.wait_time = randf_range(3, 12)
@@ -49,3 +67,10 @@ func _input(event):
 				%video.play()
 			if event.keycode == KEY_P:
 				print(%video.stream_position)
+			if event.keycode == KEY_F:
+				load_many()
+			if event.keycode == KEY_S:
+				if %video.is_playing():
+					%video.stop()
+				else:
+					%video.play()

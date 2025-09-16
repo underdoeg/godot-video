@@ -32,7 +32,6 @@ class GAVTexture {
 	int height = 0;
 	godot::RID texture_rid{};
 	godot::RID texture_rid_main{};
-	AVCodecContext *codec_ctx = nullptr;
 
 	godot::RenderingDevice *rd = nullptr;
 	int num_planes = 0;
@@ -54,13 +53,17 @@ public:
 	GAVTexture();
 	~GAVTexture();
 	bool test_copy = false;
+	AVCodecContext *codec_ctx = nullptr;
+
+	int get_width() const { return width; }
+	int get_height() const { return height; }
 
 	// setup returns an RID to wrap
-	godot::RID setup(AVCodecContext *_ctx, godot::RenderingDevice *_rd);
+	godot::RID setup(int w, int h, godot::RenderingDevice *_rd);
 	// [[nodiscard]] godot::Ref<godot::Texture2DRD> get_texture() const {
 	// 	return texture;
 	// }
-	void update_from_vulkan(const AVFramePtr& frame);
+	void update_from_vulkan(const AVFramePtr &frame);
 	void update_from_sw(const AVFramePtr &frame);
 	void update_from_hw(const AVFramePtr &shared);
 };

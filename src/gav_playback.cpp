@@ -4,7 +4,6 @@
 
 #include "gav_playback.h"
 
-#include "../cmake-build-release_system/_deps/godot-cpp-build/gen/include/godot_cpp/classes/file_access.hpp"
 #include "helpers.h"
 #include "vk_ctx.h"
 
@@ -34,9 +33,16 @@ using namespace godot;
 RenderingDevice *GAVPlayback::decode_rd = nullptr;
 RenderingDevice *GAVPlayback::conversion_rd = nullptr;
 
+constexpr int num_open_videos_max = 32;
+static int num_open_videos = 0;
+static int num_open_videos_total = 0;
+
+static std::map<int, std::vector<AVBufferRef *>> hw_devices;
+
 void GAVPlayback::_bind_methods() {
 	ADD_SIGNAL(MethodInfo("finished"));
 }
+
 GAVPlayback::GAVPlayback() {
 	// UtilityFunctions::print("Create new GAVPlayback");
 }
@@ -47,6 +53,7 @@ GAVPlayback::~GAVPlayback() {
 	// av_frame_unref(audio_frame.get());
 	// av_frame_unref(video_frame_to_show.get());
 	av_packet_unref(pkt);
+	av_packet_free(&pkt);
 	// // if (thread.joinable()) {
 	// // 	thread.join();
 	// // }
@@ -70,7 +77,7 @@ bool GAVPlayback::load(const String &file_path) {
 	if (texture_public.is_valid()) {
 		texture_public->set_texture_rd_rid(RID());
 	}
-	init();
+	// init();
 	return true;
 }
 
@@ -99,7 +106,7 @@ void GAVPlayback::read_next_packet() {
 		if (do_loop) {
 			// TODO: not that efficient to recreate the entire video pipeline
 			init();
-			av_packet_unref(pkt);
+			// av_packet_unref(pkt);
 			return;
 		}
 		decode_is_done = true;
@@ -108,6 +115,7 @@ void GAVPlayback::read_next_packet() {
 	}
 	if (ff_ok(ret) && frame_handlers.contains(pkt->stream_index)) {
 		frame_handlers.at(pkt->stream_index).handle(pkt);
+		av_packet_unref(pkt);
 	} else {
 		av_packet_unref(pkt);
 	}
@@ -118,6 +126,12 @@ bool GAVPlayback::init() {
 		return false;
 	}
 
+	// if (file_path_loaded == file_path_requested) {
+	// 	avformat_seek_file(fmt_ctx, 0, 0, 0, 0, AVSEEK_FLAG_ANY);
+	// 	return true;
+	// }
+	cleanup();
+
 	if (!decode_rd) {
 		decode_rd = RenderingServer::get_singleton()->get_rendering_device();
 	}
@@ -126,6 +140,9 @@ bool GAVPlayback::init() {
 	}
 
 	// cleanup();
+	if (texture && num_open_videos >= num_open_videos_max) {
+		return false;
+	}
 
 	// conversion_rd = RenderingServer::get_singleton()->get_rendering_device();
 
@@ -146,6 +163,36 @@ bool GAVPlayback::init() {
 		return false;
 	}
 
+	if (num_open_videos >= num_open_videos_max) {
+		UtilityFunctions::printerr("Too many open videos: ", num_open_videos, ", cannot  create a new one");
+
+		// this is a bit dumb but godot asks for the texture right away so we must prepare it for when the video will eventually load
+		const AVCodec *codec = nullptr;
+		auto video_stream_index = av_find_best_stream(fmt_ctx, AVMEDIA_TYPE_VIDEO, -1, -1, &codec, 0);
+		if (video_stream_index != AVERROR_STREAM_NOT_FOUND) {
+			auto stream = fmt_ctx->streams[video_stream_index];
+			AVCodecParameters *codecpar = stream->codecpar;
+			texture = std::make_shared<GAVTexture>();
+			tex_rid = texture->setup(codecpar->width, codecpar->height, conversion_rd);
+			if (texture_public.is_valid()) {
+				texture_public->set_texture_rd_rid(tex_rid);
+			}
+		}
+
+		avformat_close_input(&fmt_ctx);
+		fmt_ctx = nullptr;
+
+		waiting_for_init = true;
+		return false;
+	}
+
+	waiting_for_init = false;
+
+	num_open_videos++;
+	num_open_videos_total++;
+
+	UtilityFunctions::print("Number of currently open videos: ", num_open_videos, ", total: ", num_open_videos_total);
+
 	decode_is_done = false;
 
 	// device list reports as not implemented
@@ -164,18 +211,20 @@ bool GAVPlayback::init() {
 	// std::cout << "Duration: " << fmt_ctx->duration << " microseconds" << std::endl;
 	// std::cout << "Number of streams: " << fmt_ctx->nb_streams << std::endl;
 
-	for (int i = 0; i < fmt_ctx->nb_streams; i++) {
-		AVStream *stream = fmt_ctx->streams[i];
-		if (!has_video() && stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
-			video_stream_index = i;
-		}
-		if (!has_audio() && stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
-			audio_stream_index = i;
-		}
-		if (has_video() && has_audio()) {
-			break;
-		}
-	}
+	// for (int i = 0; i < fmt_ctx->nb_streams; i++) {
+	// 	AVStream *stream = fmt_ctx->streams[i];
+	// 	if (!has_video() && stream->codecpar->codec_type == AVMEDIA_TYPE_VIDEO) {
+	// 		video_stream_index = i;
+	// 	}
+	// 	if (!has_audio() && stream->codecpar->codec_type == AVMEDIA_TYPE_AUDIO) {
+	// 		audio_stream_index = i;
+	// 	}
+	// 	if (has_video() && has_audio()) {
+	// 		break;
+	// 	}
+	// }
+	video_stream_index = av_find_best_stream(fmt_ctx, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
+	audio_stream_index = av_find_best_stream(fmt_ctx, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
 
 	if (has_video()) {
 		if (verbose_logging)
@@ -208,7 +257,7 @@ bool GAVPlayback::init_video() {
 		if (device_vendor == "nvidia") {
 			hw_preferred = AV_HWDEVICE_TYPE_VDPAU;
 		} else {
-			hw_preferred = AV_HWDEVICE_TYPE_VULKAN;
+			hw_preferred = AV_HWDEVICE_TYPE_VAAPI;
 		}
 		// hw_preferred = AV_HWDEVICE_TYPE_VULKAN;
 	}
@@ -272,39 +321,56 @@ bool GAVPlayback::init_video() {
 	}
 
 	auto create_hw_dev = [&](const AVCodecHWConfig *conf) {
-		AVBufferRef *hw_device_ctx = NULL;
 		if (verbose_logging)
 			UtilityFunctions::print(filename, ": ", "Trying to setup HW device: ", av_hwdevice_get_type_name(conf->device_type));
-		// THis only works with the patched godot version, TODO check
-		if (conf->device_type == AV_HWDEVICE_TYPE_VULKAN && GODOT_VULKAN_PATCHED) {
-			video_codec_ctx->hw_device_ctx = av_vk_create_device(decode_rd);
-			if (!video_codec_ctx->hw_device_ctx) {
-				UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "av_vk_create_device failed");
-				return false;
-			}
+
+		// if (hw_device_ctx) {
+		// 	av_buffer_unref(&hw_device_ctx);
+		// 	hw_device_ctx = nullptr;
+		// }
+
+		AVBufferRef *hw_device_ctx = nullptr;
+
+		if (!hw_devices[conf->device_type].empty()) {
+			// use preexisting devices
+			hw_device_ctx = hw_devices[conf->device_type].back();
+			hw_devices[conf->device_type].pop_back();
+			UtilityFunctions::print("using existing HW decoder");
 		} else {
-			if (!ff_ok(av_hwdevice_ctx_create(&hw_device_ctx, conf->device_type, nullptr, nullptr, 0))) {
-				UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "Could not create HW device");
-				video_codec_ctx->hw_device_ctx = nullptr;
-				return false;
+			// THis only works with the patched godot version, TODO check
+			if (conf->device_type == AV_HWDEVICE_TYPE_VULKAN && GODOT_VULKAN_PATCHED) {
+				video_codec_ctx->hw_device_ctx = av_vk_create_device(decode_rd);
+				if (!video_codec_ctx->hw_device_ctx) {
+					UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "av_vk_create_device failed");
+					return false;
+				}
+			} else {
+				// auto hw_device_ctx = av_hwdevice_ctx_alloc(conf->device_type);
+				// reinterpret_cast<AVHWDeviceContext*>(hw_device_ctx)->free = [](AVHWDeviceContext* ctx) {
+				// 	UtilityFunctions::print("Context free called");
+				// };
+				// if (!ff_ok(av_hwdevice_ctx_init(hw_device_ctx))) {
+				// 	av_buffer_unref(&hw_device_ctx);
+				// 	return false;
+				// }
+				if (!ff_ok(av_hwdevice_ctx_create(&hw_device_ctx, conf->device_type, nullptr, nullptr, 0))) {
+					UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "Could not create HW device");
+					if (hw_device_ctx) {
+						av_buffer_unref(&hw_device_ctx);
+					}
+					hw_device_ctx = nullptr;
+					video_codec_ctx->hw_device_ctx = nullptr;
+					return false;
+				}
 			}
-			video_codec_ctx->hw_device_ctx = av_buffer_ref(hw_device_ctx);
 		}
 
-		// else {
-		// 	video_codec_ctx->hw_device_ctx = av_hwdevice_ctx_alloc(conf->device_type);
-		// 	if (conf->device_type == AV_HWDEVICE_TYPE_VAAPI) {
-		// 		auto vaapi_ctx = reinterpret_cast<AVVAAPIDeviceContext*>(video_codec_ctx->hw_device_ctx);
-		// 	}
-		// 	if (!video_codec_ctx->hw_device_ctx) {
-		// 		UtilityFunctions::printerr("Could not allocate HW device context");
-		// 		return false;
-		// 	}
-		// 	if (!av_hwdevice_ctx_init(video_codec_ctx->hw_device_ctx)) {
-		// 		UtilityFunctions::printerr("Could not initialize HW device");
-		// 		return false;
-		// 	}
-		// }
+		if (!hw_device_ctx) {
+			return false;
+		}
+
+		video_codec_ctx->hw_device_ctx = hw_device_ctx;
+		hw_device_type = conf->device_type;
 
 		video_codec_ctx->pix_fmt = conf->pix_fmt;
 
@@ -401,7 +467,7 @@ bool GAVPlayback::init_video() {
 
 		if (av_hwframe_ctx_init(frames) != 0) {
 			UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "Failed to initialize HW frame context.");
-			// av_buffer_unref(&frames);
+			av_buffer_unref(&frames);
 			// return false;
 			return false;
 		}
@@ -419,12 +485,16 @@ bool GAVPlayback::init_video() {
 		return false;
 	}
 
-	texture = std::make_shared<GAVTexture>();
-	tex_rid = texture->setup(video_codec_ctx, conversion_rd);
-	if (!tex_rid.is_valid()) {
-		UtilityFunctions::printerr(filename, ": ", "Failed to setup texture");
-		return false;
+	if (!texture || texture->get_width() != video_codec_ctx->width || texture->get_height() != video_codec_ctx->height) {
+		// only create a new texture if needed
+		texture = std::make_shared<GAVTexture>();
+		tex_rid = texture->setup(video_codec_ctx->width, video_codec_ctx->height, conversion_rd);
+		if (!tex_rid.is_valid()) {
+			UtilityFunctions::printerr(filename, ": ", "Failed to setup texture");
+			return false;
+		}
 	}
+	texture->codec_ctx = video_codec_ctx;
 	if (texture_public.is_valid()) {
 		texture_public->set_texture_rd_rid(tex_rid);
 	}
@@ -594,14 +664,52 @@ void GAVPlayback::set_state(State new_state) {
 void GAVPlayback::cleanup() {
 	if (verbose_logging)
 		UtilityFunctions::print(filename, ": ", "Cleanup");
-	if (fmt_ctx)
-		avformat_close_input(&fmt_ctx);
-	if (video_codec_ctx)
+
+	if (video_codec_ctx) {
+		/* flush the decoder */
+		// pkt->data = nullptr;
+		// pkt->size = 0;
+		// ff_ok(avcodec_send_packet(video_codec_ctx, pkt));
+		// av_packet_unref(pkt);
+
+		avcodec_flush_buffers(video_codec_ctx);
+
+		// if (video_codec_ctx->hw_device_ctx) {
+		// 	av_buffer_unref(&video_codec_ctx->hw_device_ctx);
+		// 	// av_freep(video_codec_ctx->hw_device_ctx);
+		// }
+		// if (video_codec_ctx->hw_frames_ctx) {
+			// av_buffer_unref(&video_codec_ctx->hw_frames_ctx);
+			// av_freep(video_codec_ctx->hw_frames_ctx);
+		// }
+
+		if (video_codec_ctx->hw_device_ctx && hw_device_type != AV_HWDEVICE_TYPE_NONE) {
+			hw_devices[hw_device_type].push_back(video_codec_ctx->hw_device_ctx);
+			video_codec_ctx->hw_device_ctx = nullptr;
+			video_codec_ctx->hw_frames_ctx = nullptr;
+		}
 		avcodec_free_context(&video_codec_ctx);
+	}
 	if (audio_resampler)
 		swr_free(&audio_resampler);
-	if (audio_codec_ctx)
+	if (audio_codec_ctx) {
+		avcodec_flush_buffers(audio_codec_ctx);
 		avcodec_free_context(&audio_codec_ctx);
+	}
+	// if (hw_device_ctx) {
+	// 	av_buffer_unref(&hw_device_ctx);
+	// }
+
+	if (fmt_ctx) {
+		num_open_videos--;
+		avformat_flush(fmt_ctx);
+		avformat_close_input(&fmt_ctx);
+		avformat_free_context(fmt_ctx);
+		fmt_ctx = nullptr;
+	} else {
+		return;
+	}
+
 	fmt_ctx = nullptr;
 	audio_resampler = nullptr;
 	audio_codec_ctx = nullptr;
@@ -610,13 +718,14 @@ void GAVPlayback::cleanup() {
 	video_frame_to_show.reset();
 	// audio_frame.reset();
 	frame_handlers.clear();
-	if (verbose_logging)
-		UtilityFunctions::print(filename, ": ", "Cleanup done");
+	// if (verbose_logging)
+	// UtilityFunctions::print(filename, ": ", "Cleanup done");
 }
 void GAVPlayback::_stop() {
 	if (verbose_logging)
 		UtilityFunctions::print(filename, ": ", "Stopping playback");
 	set_state(STOPPED);
+	cleanup();
 }
 
 void GAVPlayback::_play() {
@@ -624,10 +733,14 @@ void GAVPlayback::_play() {
 		UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "Cannot play. no filepath given");
 		return;
 	}
-	if (file_path_requested != file_path_loaded) {
-		init();
-	}
-	if (!has_video() && !has_audio()) {
+	// if (file_path_requested != file_path_loaded) {
+	// 	init();
+	// } else {
+	// 	UtilityFunctions::print(filename, ": ", "Restart");
+	// 	avformat_seek_file(fmt_ctx, 0, 0, 0, 0, AVSEEK_FLAG_ANY);
+	// }
+	init();
+	if (!has_video() && !has_audio() && !waiting_for_init) {
 		UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "Cannot play. No video or audio stream");
 		return;
 	}
@@ -639,8 +752,19 @@ void GAVPlayback::_update(double p_delta) {
 		return;
 	}
 
+	if (waiting_for_init) {
+		UtilityFunctions::print("waiting for init...");
+		init();
+	}
+
+	if (!fmt_ctx || !pkt) {
+		return;
+	}
+	// if (!video_ctx_ready && !audio_ctx_ready)
+	// return;
+
 	// make sure the buffer has some data
-	for (int i = 0; i < 10; i++) {
+	for (int i = 0; i < 3; i++) {
 		// read more data from the file
 		read_next_packet();
 
@@ -721,9 +845,11 @@ void GAVPlayback::_set_audio_track(int32_t p_idx) {
 Ref<Texture2D> GAVPlayback::_get_texture() const {
 	if (!texture_public.is_valid()) {
 		if (verbose_logging)
-			UtilityFunctions::print(filename, ": ", "create texture");
+			UtilityFunctions::print(filename, ": ", "_get_texture::create new texture");
 		texture_public.instantiate();
 	}
+	if (verbose_logging)
+		UtilityFunctions::print(filename, ": ", "_get_texture");
 	texture_public->set_texture_rd_rid(tex_rid);
 	return texture_public;
 }

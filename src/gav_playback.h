@@ -35,6 +35,7 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 	// AVCodecContext *dec_ctx = nullptr;
 	AVCodecContext *video_codec_ctx = nullptr;
 	AVCodecContext *audio_codec_ctx = nullptr;
+	AVHWDeviceType hw_device_type = AV_HWDEVICE_TYPE_NONE;
 
 	AVPacket *pkt = av_packet_alloc();
 
@@ -43,6 +44,9 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 
 	static godot::RenderingDevice *decode_rd;
 	static godot::RenderingDevice *conversion_rd;
+
+	// set to true if there are too many open videos  at once, it will retry to ini every frame
+	bool waiting_for_init = false;
 
 	bool video_ctx_ready = false;
 	bool audio_ctx_ready = false;
@@ -69,9 +73,9 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 
 	bool init();
 	bool init_video();
-	[[nodiscard]] bool has_video() const { return video_stream_index >= 0; }
+	[[nodiscard]] bool has_video() const { return video_stream_index != AVERROR_STREAM_NOT_FOUND && video_stream_index >= 0; }
 	bool init_audio();
-	[[nodiscard]] bool has_audio() const { return audio_stream_index >= 0; }
+	[[nodiscard]] bool has_audio() const { return audio_stream_index != AVERROR_STREAM_NOT_FOUND && audio_stream_index >= 0; }
 
 	// std::thread thread;
 	// void thread_func();

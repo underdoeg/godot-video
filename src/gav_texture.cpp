@@ -37,35 +37,34 @@ static VkFunctions *vkf = nullptr;
 GAVTexture::GAVTexture() {
 }
 GAVTexture::~GAVTexture() {
-	if (texture_rid_main.is_valid()) {
+	for (auto &b : planes) {
+		if (b.is_valid()) {
+			// UtilityFunctions::print("release plane");
+			rd->free_rid(b);
+		}
+	}
+
+	if (texture_rid != texture_rid_main && texture_rid_main.is_valid()) {
+		// UtilityFunctions::print("release texture_rid_main");
 		RenderingServer::get_singleton()->get_rendering_device()->free_rid(texture_rid_main);
 	}
-	// shaders are shared and reused
-	// if (conversion_shader.is_valid()) {
-	// 	rd->free_rid(conversion_shader);
-	// }
 
 	if (conversion_pipeline.is_valid()) {
+		// UtilityFunctions::print("release conversion_pipeline");
 		rd->free_rid(conversion_pipeline);
 	}
 
 	if (texture_rid.is_valid()) {
+		// UtilityFunctions::print("release texture_rid");
 		rd->free_rid(texture_rid);
-	}
-
-	for (auto &b : planes) {
-		if (b.is_valid()) {
-			rd->free_rid(b);
-		}
 	}
 }
 
-RID GAVTexture::setup(AVCodecContext *_ctx, RenderingDevice *_rd) {
+RID GAVTexture::setup(int w, int h, RenderingDevice *_rd) {
 	// if (texture.is_valid() && texture->get_texture_rd_rid().is_valid()) {
 	// 	UtilityFunctions::print("TODO cleanup old texture");
 	// }
 
-	codec_ctx = _ctx;
 	rd = _rd;
 
 	// rd->compute_pipeline_create()
@@ -88,8 +87,8 @@ RID GAVTexture::setup(AVCodecContext *_ctx, RenderingDevice *_rd) {
 	// }
 	// }
 
-	width = codec_ctx->width;
-	height = codec_ctx->height;
+	width = w;
+	height = h;
 
 	if (verbose_logging)
 		UtilityFunctions::print("create texture of size ", width, "x", height);
@@ -126,6 +125,11 @@ RID GAVTexture::setup(AVCodecContext *_ctx, RenderingDevice *_rd) {
 
 	// if (!texture_rid.is_valid()) {
 	texture_rid = rd->texture_create(format, view);
+
+	PackedByteArray black;
+	black.resize(width * height * 4);
+	rd->texture_update(texture_rid, 0, black);
+
 	// }
 	if (!texture_rid.is_valid()) {
 		UtilityFunctions::printerr("Could not create texture");
@@ -190,7 +194,7 @@ bool GAVTexture::setup_pipeline(AVPixelFormat pixel_format) {
 	}
 
 	// TODO handle color space
-	auto col_space = codec_ctx->colorspace;
+	auto col_space = codec_ctx ? codec_ctx->colorspace : AVCOL_SPC_UNSPECIFIED;
 
 	// taken from https://github.com/Themaister/Granite/blob/master/video/ffmpeg_decode.cpp#L777
 	if (col_space == AVCOL_SPC_UNSPECIFIED) {
@@ -260,9 +264,9 @@ bool GAVTexture::setup_pipeline(AVPixelFormat pixel_format) {
 
 	// num_planes = 2;
 
-	if (verbose_logging)
+	if (verbose_logging) {
 		UtilityFunctions::print("number of planes: ", num_planes, "  ", plane_sizes_str);
-
+	}
 	// // create the compute shader
 	if (pixel_format == AV_PIX_FMT_NV12) {
 		conversion_shader = nv12(rd, { width, height });
