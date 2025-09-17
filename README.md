@@ -27,5 +27,22 @@ cmake --build . --target libx264 libx265 zlib xz bzip2 ffnvenc ffmpeg
 cmake --build . --target godot-video
 ```
 
+## Build for patched godot with vulkan video
+```
+mkdir build
+cd build
+cmake -DUSE_GODOT_PATCHED=ON ..
+cmake --build . --target libx264 libx265 zlib xz bzip2 ffnvenc ffmpeg
+cmake --build . --target godot-video
+```
+
+On intel vulkan video api is behind a flag. launch with 
+
+```
+ANV_VIDEO_DECODE=1 ./godot.linuxbsd.editor.x86_64 --main-pack something.pck
+```
+
+## Notes
+
 library is linked against vaapi 2.2, older ubuntu version need the intel ppa
 ```sudo add-apt-repository -y ppa:kobuk-team/intel-graphics```

@@ -325,6 +325,7 @@ bool GAVTexture::setup_pipeline(AVPixelFormat pixel_format) {
 	pipeline_format = pixel_format;
 	return true;
 }
+
 void GAVTexture::run_conversion_shader() {
 	// run the conversion shader
 	if (!conversion_shader.is_valid()) {
@@ -366,6 +367,11 @@ void GAVTexture::update_from_vulkan(const AVFramePtr &frame) {
 			reinterpret_cast<PFN_vkQueueSubmit>(vk_proc_addr(v, "vkQueueSubmit")),
 			reinterpret_cast<PFN_vkCmdCopyImageToBuffer>(vk_proc_addr(v, "vkCmdCopyImageToBuffer")),
 		};
+	}
+
+	if (!codec_ctx || !codec_ctx->hw_device_ctx) {
+		UtilityFunctions::printerr("Could not retrieve vk codec ctx");
+		return;
 	}
 
 	auto *hw_dev = reinterpret_cast<AVHWDeviceContext *>(codec_ctx->hw_device_ctx->data);

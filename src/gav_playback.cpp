@@ -322,8 +322,8 @@ bool GAVPlayback::init_video() {
 		} else {
 			// THis only works with the patched godot version, TODO check
 			if (conf->device_type == AV_HWDEVICE_TYPE_VULKAN && GODOT_VULKAN_PATCHED) {
-				video_codec_ctx->hw_device_ctx = av_vk_create_device(decode_rd);
-				if (!video_codec_ctx->hw_device_ctx) {
+				hw_device_ctx = av_vk_create_device(decode_rd);
+				if (!hw_device_ctx) {
 					UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "av_vk_create_device failed");
 					return false;
 				}
@@ -346,7 +346,6 @@ bool GAVPlayback::init_video() {
 					video_codec_ctx->hw_device_ctx = nullptr;
 					return false;
 				}
-				UtilityFunctions::print(filename, ": ", "Created HW device of type: ", av_hwdevice_get_type_name(hw_device_type));
 			}
 		}
 
@@ -356,11 +355,12 @@ bool GAVPlayback::init_video() {
 
 		video_codec_ctx->hw_device_ctx = hw_device_ctx;
 		hw_device_type = conf->device_type;
+		UtilityFunctions::print(filename, ": ", "Created HW device of type: ", av_hwdevice_get_type_name(hw_device_type));
 
 		video_codec_ctx->pix_fmt = conf->pix_fmt;
 
-		if (verbose_logging)
-		UtilityFunctions::print(filename, ": ", "hw device created");
+		// if (verbose_logging)
+		UtilityFunctions::print(filename, ": ", "hw device created: ", av_hwdevice_get_type_name(hw_device_type));
 		return true;
 	};
 
@@ -747,7 +747,7 @@ void GAVPlayback::_update(double p_delta) {
 	// return;
 
 	// make sure the buffer has some data
-	for (int i = 0; i < 3; i++) {
+	for (int i = 0; i < 30; i++) {
 		// read more data from the file
 		read_next_packet();
 
@@ -762,6 +762,7 @@ void GAVPlayback::_update(double p_delta) {
 		// UtilityFunctions::print(filename, ": ", video_frame_to_show->width, "x", video_frame_to_show->height);
 		if (accel_config) {
 			if (accel_config->device_type == AV_HWDEVICE_TYPE_VULKAN && GODOT_VULKAN_PATCHED) {
+				texture->codec_ctx = video_codec_ctx;
 				texture->update_from_vulkan(video_frame_to_show);
 			} else {
 				texture->update_from_hw(video_frame_to_show);

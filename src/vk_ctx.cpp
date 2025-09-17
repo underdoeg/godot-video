@@ -12,7 +12,7 @@ VKAPI_ATTR PFN_vkVoidFunction VKAPI_CALL vk_proc_addr(
 		VkInstance instance,
 		const char *pName) {
 	auto ret = vkGetInstanceProcAddr(instance, pName);
-	UtilityFunctions::print("get_it: ", pName, " - ", ret != nullptr);
+	// UtilityFunctions::print("get_it: ", pName, " - ", ret != nullptr);
 	return ret;
 	// return vkGetInstanceProcAddr(instance, pName);
 }
@@ -272,6 +272,7 @@ bool av_vk_ctx_setup(AVVulkanDeviceContext *ctx, godot::RenderingDevice *rd) {
 AVBufferRef *av_vk_create_device(godot::RenderingDevice *rd) {
 	static AVBufferRef *hw_dev = nullptr;
 	if (hw_dev) {
+		UtilityFunctions::print("Return already created vk device");
 		return hw_dev;
 	}
 
