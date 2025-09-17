@@ -60,6 +60,7 @@ public:
 
 	// setup returns an RID to wrap
 	godot::RID setup(int w, int h, godot::RenderingDevice *_rd);
+	void set_black();
 	// [[nodiscard]] godot::Ref<godot::Texture2DRD> get_texture() const {
 	// 	return texture;
 	// }

@@ -126,9 +126,7 @@ RID GAVTexture::setup(int w, int h, RenderingDevice *_rd) {
 	// if (!texture_rid.is_valid()) {
 	texture_rid = rd->texture_create(format, view);
 
-	PackedByteArray black;
-	black.resize(width * height * 4);
-	rd->texture_update(texture_rid, 0, black);
+	set_black();
 
 	// }
 	if (!texture_rid.is_valid()) {
@@ -154,6 +152,22 @@ RID GAVTexture::setup(int w, int h, RenderingDevice *_rd) {
 
 	// the pixel format  reported might change on the first frame, so we create the shader in update_from_vulkan
 	// auto pixel_format = frames->sw_format;
+}
+
+void GAVTexture::set_black() {
+	PackedByteArray black;
+	for (int i = 0; i < num_planes; i++) {
+		auto plane = plane_infos[i];
+		black.resize(plane.byte_size);
+		rd->texture_update(planes[i], 0, black);
+	}
+
+	black.resize(width * height * 4);
+	auto ptr = black.ptrw();
+	for (size_t i = 3; i < black.size(); i += 4) {
+		ptr[i] = 0xff;
+	}
+	rd->texture_update(texture_rid, 0, black);
 }
 
 bool GAVTexture::setup_pipeline(AVPixelFormat pixel_format) {

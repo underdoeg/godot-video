@@ -17,7 +17,10 @@ extern "C" {
 #include <libswresample/swresample.h>
 }
 
+#ifndef GODOT_VULKAN_PATCHED
 #define GODOT_VULKAN_PATCHED false
+#endif
+// #define GODOT_VULKAN_PATCHED false
 
 class GAVPlayback : public godot::VideoStreamPlayback {
 	struct VideoInfo {
@@ -41,6 +44,9 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 
 	int video_stream_index = -1;
 	int audio_stream_index = -1;
+
+	int audio_num_channels = 0;
+	int audio_sample_rate = 0;
 
 	static godot::RenderingDevice *decode_rd;
 	static godot::RenderingDevice *conversion_rd;
@@ -105,7 +111,7 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 	// frame handlers for specific stream indices (usually two, one video, one audio)
 	std::map<int, PacketDecoder> frame_handlers;
 
-	void cleanup();
+	void cleanup(bool with_format_ctx);
 
 public:
 	GAVPlayback();

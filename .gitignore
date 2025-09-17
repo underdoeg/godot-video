@@ -18,7 +18,7 @@ demo/bin/windows/*
 !demo/bin/windows/.gitkeep
 !demo/bin/*.gdextension
 .sconsign*.dblite
-cmake-build**/
+cmake-build-*
 
 # Ignore custom.py
 custom.py

@@ -203,9 +203,9 @@ set(FFMPEG_DIR ${CMAKE_BINARY_DIR}/ffmpeg)
 # config with everything
 # set(FFMPEG_CONFIG --enable-shared --enable-libaom --enable-gpl --enable-gnutls --enable-libass --enable-libfdk-aac --enable-libfreetype --enable-libmp3lame --enable-libopus --enable-libsvtav1 --enable-libdav1d --enable-libvorbis --enable-libvpx --enable-libx264 --enable-libx265 --enable-nonfree)
 # potentially enable  --enable-libass  --enable-libfreetype => subtitles |  --enable-libdav1d av1 decode | --enable-libopus opus audio | --enable-libvpx VP8/VP9 |  --enable-libfdk-aac AAC Audio |  --enable-libvorbis  vorbis audio |  --enable-libmp3lame mp3 audio
-# --enable-cuda-sdk
-set(FFMPEG_CONFIG --enable-gpl --enable-libx264 --enable-libx265 --enable-nonfree --enable-vaapi --enable-nvenc --enable-ffnvcodec
-        --enable-rpath --enable-ffplay)
+# --enable-cuda-sdk  --enable-nvenc --enable-ffnvcodec
+set(FFMPEG_CONFIG --enable-gpl --enable-libx264 --enable-libx265 --enable-nonfree --enable-vaapi
+        --enable-rpath --enable-ffplay --disable-cuda-sdk)
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     message("Enable ffmpeg debug build")
     set(FFMPEG_CONFIG ${FFMPEG_CONFIG} --enable-debug=3 --disable-optimizations --disable-stripping)
@@ -303,6 +303,12 @@ endif ()
 set(GODOT_PROJECT_BINARY_DIR "${PROJECT_SOURCE_DIR}/${GODOT_PROJECT_DIR}/bin/${GODOTCPP_PLATFORM}")
 
 set(USE_SYSTEM_FFMPEG OFF CACHE BOOL "Use system installed ffmpeg instead of building from source")
+set(USE_GODOT_PATCHED OFF CACHE BOOL "Build for patched godot with vulkan video modules")
+
+if (USE_GODOT_PATCHED)
+    target_compile_definitions(${LIBNAME} PUBLIC -DGODOT_VULKAN_PATCHED=1)
+endif ()
+
 
 if (USE_SYSTEM_FFMPEG)
     message("using system ffmpeg")
