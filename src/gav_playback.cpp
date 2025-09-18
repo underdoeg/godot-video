@@ -496,8 +496,7 @@ bool GAVPlayback::init_video() {
 			progress_millis = std::chrono::duration_cast<std::chrono::milliseconds>(pos).count();
 			return true;
 		}
-		return false;
-	}));
+		return false; }, 2));
 
 	video_ctx_ready = true;
 	return true;
@@ -747,7 +746,7 @@ void GAVPlayback::_update(double p_delta) {
 	// return;
 
 	// make sure the buffer has some data
-	for (int i = 0; i < 30; i++) {
+	for (int i = 0; i < 20; i++) {
 		// read more data from the file
 		read_next_packet();
 
