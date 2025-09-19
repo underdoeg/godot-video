@@ -16,11 +16,17 @@ extern "C" {
 }
 
 class GAVTexture {
+public:
+	using Buffers = std::array<godot::PackedByteArray, 4>;
+	using BuffersPtr = std::shared_ptr<Buffers>;
+
+private:
 	enum Pipeline {
 		VULKAN,
 		SW,
 		UNKNOWN,
 	};
+
 	// Pipeline pipeline_type = UNKNOWN;
 
 	struct PlaneInfo {
@@ -37,7 +43,7 @@ class GAVTexture {
 	int num_planes = 0;
 	std::array<PlaneInfo, 4> plane_infos{};
 	std::array<godot::RID, 4> planes{};
-	std::array<godot::PackedByteArray, 4> plane_buffers{};
+	Buffers plane_buffers{};
 	AVFramePtr conversion_frame;
 	godot::RID conversion_shader{};
 	godot::RID conversion_shader_uniform_set{};
@@ -47,7 +53,7 @@ class GAVTexture {
 	AVPixelFormat pipeline_format = AV_PIX_FMT_NONE;
 
 	bool setup_pipeline(AVPixelFormat pixel_format);
-	void run_conversion_shader();
+	void run_conversion_shader() const;
 
 public:
 	GAVTexture();
@@ -64,6 +70,10 @@ public:
 	// [[nodiscard]] godot::Ref<godot::Texture2DRD> get_texture() const {
 	// 	return texture;
 	// }
+
+	void frame_to_buffers(const AVFramePtr &frame, Buffers &buffers) const;
+
+	void update_from_buffers(const Buffers &buffers, AVPixelFormat format);
 	void update_from_vulkan(const AVFramePtr &frame);
 	void update_from_sw(const AVFramePtr &frame);
 	void update_from_hw(const AVFramePtr &shared);

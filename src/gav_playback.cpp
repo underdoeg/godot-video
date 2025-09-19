@@ -87,7 +87,7 @@ bool GAVPlayback::load(const String &file_path) {
 		conversion_rd = decode_rd; // RenderingServer::get_singleton()->create_local_rendering_device();
 	}
 
-	// open the file but do not init decoders yet
+	// open the file but do not request_init decoders yet
 	const String path = ProjectSettings::get_singleton()->globalize_path(file_path_requested);
 	UtilityFunctions::print(filename, ": ", "GAVPlayback::load ", path);
 
@@ -128,7 +128,7 @@ bool GAVPlayback::load(const String &file_path) {
 	file_path_loaded = file_path;
 	UtilityFunctions::print(filename, ": ", "GAVPlayback::load ", file_path_loaded);
 
-	// init();
+	// request_init();
 	return true;
 }
 
@@ -139,37 +139,12 @@ bool GAVPlayback::load(const String &file_path) {
 // }
 
 bool GAVPlayback::init() {
-	if (!file_path_requested) {
-		return false;
-	}
-
-	cleanup(false);
-
 	if (!fmt_ctx) {
-		UtilityFunctions::printerr(filename, ": ", "GAVPlayback cannot init, fmt ctx is undefined: ", file_path_requested);
+		UtilityFunctions::printerr(filename, ": ", "GAVPlayback cannot request_init, fmt ctx is undefined: ", file_path_requested);
 		return false;
 	}
-
-	// if (file_path_loaded == file_path_requested) {
-	// 	avformat_seek_file(fmt_ctx, 0, 0, 0, 0, AVSEEK_FLAG_ANY);
-	// 	return true;
-	// }
-	// cleanup();
-
-	// cleanup();
-	// if (num_open_videos >= num_open_videos_max) {
-	// 	UtilityFunctions::printerr("too many open videos, waiting...");
-	// 	waiting_for_init = true;
-	// 	return false;
-	// }
 
 	waiting_for_init = false;
-
-	// num_open_videos++;
-	// num_open_videos_total++;
-
-	// UtilityFunctions::print("Number of currently open videos: ", num_open_videos, ", total: ", num_open_videos_total);
-
 	decode_is_done = false;
 
 	if (has_video()) {
@@ -192,6 +167,32 @@ bool GAVPlayback::init() {
 	file_path_loaded = file_path_requested;
 	return true;
 }
+
+bool GAVPlayback::request_init() {
+	if (!file_path_requested) {
+		return false;
+	}
+
+	_stop();
+
+	cleanup(false);
+
+	decoder_threaded = true;
+#if GODOT_VULKAN_PATCHED
+	decoder_threaded = false;
+#endif
+
+	if (decoder_threaded) {
+		// run a thread
+		decoder_thread = std::thread([&] {
+			decoder_threaded_func();
+		});
+
+		return true;
+	}
+
+	return init();
+}
 bool GAVPlayback::init_video() {
 	// determine sensible prefered codec
 	if (!av_vk_video_supported(decode_rd)) {
@@ -199,7 +200,7 @@ bool GAVPlayback::init_video() {
 		// auto detect v dpau or vaapi /nvidia or intel
 		const auto device_vendor = conversion_rd->get_device_vendor_name().to_lower();
 		if (verbose_logging)
-			UtilityFunctions::print(filename, ": ", "Device vendopr ", device_vendor);
+			UtilityFunctions::print(filename, ": ", "Device vendor ", device_vendor);
 		if (device_vendor == "nvidia") {
 			hw_preferred = AV_HWDEVICE_TYPE_VDPAU;
 		} else {
@@ -463,14 +464,19 @@ bool GAVPlayback::init_video() {
 				}else {
 					type = VideoFrameType::HW;
 				}
+			}{
+				if (decoder_threaded) {
+					video_frame_to_show_thread = {frame, {}, type};
+				}else {
+					video_frame_to_show = {frame, {}, type};
+				}
+				// av_frame_copy(video_frame_to_show.get(), frame.get());
+				auto pos = time - start_time;
+				progress_millis = std::chrono::duration_cast<std::chrono::milliseconds>(pos).count();
 			}
-			video_frame_to_show = {frame, type};
-			// av_frame_copy(video_frame_to_show.get(), frame.get());
-			auto pos = time - start_time;
-			progress_millis = std::chrono::duration_cast<std::chrono::milliseconds>(pos).count();
 			return true;
 		}
-		return false; }, 5));
+		return false; }, 20));
 
 	video_ctx_ready = true;
 	return true;
@@ -626,6 +632,10 @@ void GAVPlayback::set_state(State new_state) {
 void GAVPlayback::cleanup(bool with_format_ctx) {
 	if (verbose_logging)
 		UtilityFunctions::print(filename, ": ", "Cleanup");
+	if (decoder_thread.joinable()) {
+		UtilityFunctions::print(filename, ": cleanup wait for decoder thread");
+		decoder_thread.join();
+	}
 
 	if (video_codec_ctx) {
 		avcodec_flush_buffers(video_codec_ctx);
@@ -690,12 +700,13 @@ void GAVPlayback::_play() {
 		return;
 	}
 	// if (file_path_requested != file_path_loaded) {
-	// 	init();
+	// 	request_init();
 	// } else {
 	// 	UtilityFunctions::print(filename, ": ", "Restart");
 	// 	avformat_seek_file(fmt_ctx, 0, 0, 0, 0, AVSEEK_FLAG_ANY);
 	// }
-	init();
+	request_init();
+
 	if (!has_video() && !has_audio() && !waiting_for_init) {
 		UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "Cannot play. No video or audio stream");
 		return;
@@ -722,7 +733,7 @@ bool GAVPlayback::read_next_packet() {
 	if (ret == AVERROR_EOF) {
 		if (do_loop) {
 			// TODO: not that efficient to recreate the entire video pipeline
-			init();
+			request_init();
 			// av_packet_unref(pkt);
 			return false;
 		}
@@ -744,7 +755,7 @@ void GAVPlayback::read_packets() {
 	}
 
 	int read_count = 0;
-	while (read_next_packet() && read_count < 100) {
+	while (read_next_packet() && read_count < 30) {
 		read_count++;
 	}
 
@@ -762,7 +773,7 @@ bool GAVPlayback::show_active_video_frame() {
 	// process might have given us a new video frame, update_from_vulkan the texture
 
 	// TOO: not necessary when not in threaded mode, but leave for now
-	std::scoped_lock lock(video_mtx);
+	std::scoped_lock lock(decoder_mtx);
 
 	if (!video_frame_to_show)
 		return false;
@@ -778,8 +789,72 @@ bool GAVPlayback::show_active_video_frame() {
 		case VK:
 			texture->update_from_vulkan(video_frame_to_show->frame);
 			break;
+		case BUFF:
+			texture->update_from_buffers(*video_frame_to_show->buffer, video_frame_to_show->pixel_format);
 	}
+	video_frame_to_show.reset();
 	return true;
+}
+
+void GAVPlayback::decoder_threaded_func() {
+	if (!init()) {
+		UtilityFunctions::printerr(filename, ": request_init error => abort threaded decoder");
+		return;
+	}
+	UtilityFunctions::print(filename, ": run threaded decoder");
+
+	std::array<GAVTexture::BuffersPtr, 3> buffers = {};
+	for (auto &buff : buffers) {
+		buff = std::make_shared<GAVTexture::Buffers>();
+	}
+	int buffers_index = 0;
+
+	while (state != State::STOPPED) {
+		auto now = std::chrono::high_resolution_clock::now();
+		auto next = now + std::chrono::milliseconds(1000 / 120);
+		read_packets();
+
+		if (video_frame_to_show_thread) {
+			// copy to cache
+			auto target = av_frame_ptr();
+			const auto frame = video_frame_to_show_thread->frame;
+
+			if (!frame->hw_frames_ctx) {
+				target = frame;
+			} else {
+				if (!ff_ok(av_hwframe_transfer_data(target.get(), frame.get(), 0))) {
+					UtilityFunctions::printerr("Could not transfer_data from hw to sw");
+				}
+			}
+
+			// video_frame_to_show_thread.reset();
+			//
+			// std::scoped_lock lock(decoder_mtx);
+			// video_frame_to_show = {
+			// 	target,
+			// 	{},
+			// 	VideoFrameType::SW,
+			// 	static_cast<AVPixelFormat>(target->format)
+			// };
+
+			buffers_index++;
+			buffers_index %= buffers.size();
+			auto buff = buffers[buffers_index];
+			texture->frame_to_buffers(target, *buff);
+			video_frame_to_show_thread.reset();
+
+			std::scoped_lock lock(decoder_mtx);
+			video_frame_to_show = {
+				{},
+				buff,
+				VideoFrameType::BUFF,
+				static_cast<AVPixelFormat>(target->format)
+			};
+		} else {
+		}
+
+		std::this_thread::sleep_until(next);
+	}
 }
 
 void GAVPlayback::_update(double p_delta) {
@@ -787,12 +862,12 @@ void GAVPlayback::_update(double p_delta) {
 		return;
 	}
 
-	if (!decoder_threaded) {
-		if (waiting_for_init) {
-			UtilityFunctions::print("waiting for init...");
-			init();
-		}
+	if (waiting_for_init) {
+		UtilityFunctions::print("waiting for request_init...");
+		request_init();
+	}
 
+	if (!decoder_threaded) {
 		read_packets();
 	}
 

@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <chrono>
 #include <memory>
 
 extern "C" {
@@ -36,3 +37,16 @@ inline AVFramePtr av_frame_ptr() {
 		av_frame_free(&f);
 	});
 }
+
+class TimeMeasue {
+	std::chrono::high_resolution_clock::time_point start_time;
+	godot::String name;
+
+public:
+	TimeMeasue(godot::String n) :
+			start_time(std::chrono::high_resolution_clock::now()), name(n) {}
+	~TimeMeasue() {
+		auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_time);
+		godot::UtilityFunctions::print(name, " ==  ", millis.count(), "ms");
+	}
+};

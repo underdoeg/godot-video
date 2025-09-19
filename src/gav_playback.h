@@ -26,12 +26,15 @@ extern "C" {
 enum VideoFrameType {
 	SW,
 	HW,
-	VK
+	VK,
+	BUFF
 };
 
 struct ActiveVideoFrame {
 	AVFramePtr frame;
+	std::shared_ptr<GAVTexture::Buffers> buffer = {};
 	VideoFrameType type;
+	AVPixelFormat pixel_format = AV_PIX_FMT_NONE;
 };
 
 class GAVPlayback : public godot::VideoStreamPlayback {
@@ -83,12 +86,13 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 		PAUSED
 	};
 
-	State state = State::STOPPED;
+	std::atomic<State> state = State::STOPPED;
 
 	godot::String filename;
 	godot::String file_path_requested;
 	godot::String file_path_loaded;
 
+	bool request_init();
 	bool init();
 	bool init_video();
 	[[nodiscard]] bool has_video() const { return video_stream_index != AVERROR_STREAM_NOT_FOUND && video_stream_index >= 0; }
@@ -102,7 +106,8 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 
 	// if set this frame will be sent to the renderer
 	std::optional<ActiveVideoFrame> video_frame_to_show;
-	int64_t progress_millis;
+	std::optional<ActiveVideoFrame> video_frame_to_show_thread;
+	std::atomic_int64_t progress_millis;
 
 	// audio resampling
 	SwrContext *audio_resampler = nullptr;
@@ -115,7 +120,6 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 	bool show_active_video_frame();
 
 	std::atomic_bool request_stop = false;
-	std::mutex video_mtx;
 	int max_frame_buffer_size = 4;
 
 	void set_state(State state);
@@ -130,6 +134,8 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 
 	std::thread decoder_thread;
 	bool decoder_threaded = false;
+	void decoder_threaded_func();
+	std::mutex decoder_mtx;
 
 public:
 	GAVPlayback();

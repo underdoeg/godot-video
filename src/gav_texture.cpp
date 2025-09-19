@@ -258,6 +258,7 @@ bool GAVTexture::setup_pipeline(AVPixelFormat pixel_format) {
 			format->set_texture_type(RenderingDevice::TEXTURE_TYPE_2D);
 			format->set_usage_bits(
 					RenderingDevice::TEXTURE_USAGE_SAMPLING_BIT |
+					// RenderingDevice::TEXTURE_USAGE_CAN_UPDATE_BIT |
 					// RenderingDevice::TEXTURE_USAGE_COLOR_ATTACHMENT_BIT |
 					// RenderingDevice::TEXTURE_USAGE_CAN_COPY_FROM_BIT |
 					RenderingDevice::TEXTURE_USAGE_STORAGE_BIT |
@@ -326,7 +327,7 @@ bool GAVTexture::setup_pipeline(AVPixelFormat pixel_format) {
 	return true;
 }
 
-void GAVTexture::run_conversion_shader() {
+void GAVTexture::run_conversion_shader() const {
 	// run the conversion shader
 	if (!conversion_shader.is_valid()) {
 		UtilityFunctions::printerr("Conversion shader is invalid");
@@ -554,20 +555,16 @@ void GAVTexture::update_from_vulkan(const AVFramePtr &frame) {
 
 	run_conversion_shader();
 }
-void GAVTexture::update_from_sw(const AVFramePtr &frame) {
-	if (!setup_pipeline(static_cast<enum AVPixelFormat>(frame->format))) { //frames->sw_format)) {
-		UtilityFunctions::printerr("failed to setup render pipeline");
-		return;
-	}
 
+void GAVTexture::frame_to_buffers(const AVFramePtr &frame, Buffers &buffers) const {
 	for (int i = 0; i < num_planes; i++) {
 		auto plane = planes[i];
 		auto info = plane_infos[i];
 
-		// const auto byte_size = frame->linesize[0] * info.height;
+		const auto byte_size = frame->linesize[0] * info.height;
 		// UtilityFunctions::print(frame->linesize[0], " ", info.line_size);
-		if (plane_buffers[i].size() < info.byte_size) {
-			plane_buffers[i].resize(info.byte_size);
+		if (buffers[i].size() < info.byte_size) {
+			buffers[i].resize(info.byte_size);
 		}
 
 		auto src = frame->data[i];
@@ -576,19 +573,44 @@ void GAVTexture::update_from_sw(const AVFramePtr &frame) {
 		const auto line_size = frame->linesize[i];
 		// UtilityFunctions::print(info.line_size, " -- ", frame->linesize[i]);
 		if (line_size == info.line_size) {
-			memcpy(plane_buffers[i].ptrw(), src, info.byte_size);
+			memcpy(buffers[i].ptrw(), src, info.byte_size);
 		} else {
-			if (plane_buffers[i].size() < info.byte_size) {
-				plane_buffers[i].resize(info.byte_size);
+			if (buffers[i].size() < info.byte_size) {
+				buffers[i].resize(info.byte_size);
 			}
 			// copy line for line
 			for (size_t y = 0; y < info.height; y++) {
-				memcpy(plane_buffers[i].ptrw() + info.line_size * y, src + line_size * y, info.line_size);
+				memcpy(buffers[i].ptrw() + info.line_size * y, src + line_size * y, info.line_size);
 			}
 		}
-		rd->texture_update(plane, 0, plane_buffers[i]);
+	}
+}
+
+void GAVTexture::update_from_buffers(const Buffers &buffers, AVPixelFormat format) {
+	if (!setup_pipeline(format)) { //frames->sw_format)) {
+		UtilityFunctions::printerr("failed to setup render pipeline");
+		return;
+	}
+	for (int i = 0; i < num_planes; i++) {
+		auto plane = planes[i];
+		if (!buffers[i].size()) {
+			// UtilityFunctions::printerr("buffer for plane", i, " is empty");
+			continue;
+		}
+		rd->texture_update(plane, 0, buffers[i]);
 	}
 	run_conversion_shader();
+}
+
+void GAVTexture::update_from_sw(const AVFramePtr &frame) {
+	{
+		// TimeMeasue t("frame_to_buffers");
+		frame_to_buffers(frame, plane_buffers);
+	}
+	{
+		// TimeMeasue t("update_from_buffers");
+		update_from_buffers(plane_buffers, static_cast<AVPixelFormat>(frame->format));
+	}
 }
 
 void GAVTexture::update_from_hw(const AVFramePtr &hw_frame) {
@@ -597,18 +619,6 @@ void GAVTexture::update_from_hw(const AVFramePtr &hw_frame) {
 	if (!conversion_frame) {
 		conversion_frame = av_frame_ptr();
 	}
-
-	// AVPixelFormat* formats = nullptr;
-	// av_hwframe_transfer_get_formats(hw_frame->hw_frames_ctx, AV_HWFRAME_TRANSFER_DIRECTION_FROM, &formats, 0);
-	// for (AVPixelFormat *p = formats;
-	// 			*p != AV_PIX_FMT_NONE; p++) {
-	// 	UtilityFunctions::print(av_get_pix_fmt_name(*p));
-	// }
-
-	// UtilityFunctions::print("Updating texture");
-	// UtilityFunctions::print("width = ", hw_frame->width);
-	// UtilityFunctions::print("height = ", hw_frame->height);
-	// UtilityFunctions::print("format = ", av_get_pix_fmt_name((AVPixelFormat)hw_frame->format));
 
 	if (!hw_frame->hw_frames_ctx) {
 		update_from_sw(hw_frame);
