@@ -115,7 +115,7 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 
 	std::atomic_bool decode_is_done = false;
 	bool read_next_packet();
-	void read_packets();
+	void read_packets(int amount=20);
 
 	bool show_active_video_frame();
 

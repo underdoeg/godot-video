@@ -63,7 +63,10 @@ void PacketDecoder::receive() {
 		if (res == AVERROR(EAGAIN)) {
 			state = State::READY;
 			if (last_frame) {
-				frames.push_back(last_frame);
+				// frame is good, offer it straight away or add it to the queue
+				// if (!frame_handler(frame)) {
+					frames.push_back(last_frame);
+				// }
 			}
 			return;
 		}
@@ -71,7 +74,6 @@ void PacketDecoder::receive() {
 			state = State::ERROR;
 			return;
 		}
-		// frame is good, offer it straight away
 		// if (!frame_handler(frame)) {
 
 		last_frame = frame;

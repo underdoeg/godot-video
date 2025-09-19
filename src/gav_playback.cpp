@@ -749,13 +749,13 @@ bool GAVPlayback::read_next_packet() {
 	}
 	return true;
 }
-void GAVPlayback::read_packets() {
+void GAVPlayback::read_packets(int amount) {
 	if (!fmt_ctx || !pkt) {
 		return;
 	}
 
 	int read_count = 0;
-	while (read_next_packet() && read_count < 30) {
+	while (read_next_packet() && read_count < amount) {
 		read_count++;
 	}
 
@@ -812,7 +812,7 @@ void GAVPlayback::decoder_threaded_func() {
 	while (state != State::STOPPED) {
 		auto now = std::chrono::high_resolution_clock::now();
 		auto next = now + std::chrono::milliseconds(1000 / 120);
-		read_packets();
+		read_packets(2);
 
 		if (video_frame_to_show_thread) {
 			// copy to cache
@@ -826,16 +826,6 @@ void GAVPlayback::decoder_threaded_func() {
 					UtilityFunctions::printerr("Could not transfer_data from hw to sw");
 				}
 			}
-
-			// video_frame_to_show_thread.reset();
-			//
-			// std::scoped_lock lock(decoder_mtx);
-			// video_frame_to_show = {
-			// 	target,
-			// 	{},
-			// 	VideoFrameType::SW,
-			// 	static_cast<AVPixelFormat>(target->format)
-			// };
 
 			buffers_index++;
 			buffers_index %= buffers.size();

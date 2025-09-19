@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="godot cpp template"
-run/main_scene="uid://dh0oj81pufivs"
+run/main_scene="uid://b568gxnsliogt"
 config/features=PackedStringArray("4.5", "Forward Plus")
 run/max_fps=120
 config/icon="res://icon.svg"
