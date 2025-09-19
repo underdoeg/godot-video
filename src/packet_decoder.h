@@ -38,16 +38,18 @@ public:
 	explicit PacketDecoder(AVCodecContext *ctx, FrameHandler handler, int max_frames = 10);
 
 	[[nodiscard]] bool is_ready() const;
+	bool is_full() const;
 	[[nodiscard]] bool queue_empty() const {
 		return frames.empty();
 	}
 
 	void handle(AVPacket *pkt);
-	void process();
+	void receive();
 	auto num_frames() const {
 		return frames.size();
 	}
 	void clear() {
 		frames.clear();
 	}
+	void offer_frames();
 };

@@ -15,14 +15,24 @@ PacketDecoder::PacketDecoder(AVCodecContext *ctx, FrameHandler handler, int _max
 		frame_handler(std::move(handler)),
 		max_frames(_max_frames) {
 	name = avcodec_get_name(ctx->codec_id);
-	if (verbose_logging) UtilityFunctions::print("Created PacketDecoder for ", name);
+	if (verbose_logging)
+		UtilityFunctions::print("Created PacketDecoder for ", name);
 }
 
 bool PacketDecoder::is_ready() const {
 	return state == State::READY && frames.size() < max_frames;
 }
+
+bool PacketDecoder::is_full() const {
+	return frames.size() >= max_frames;
+}
+
 void PacketDecoder::handle(AVPacket *pkt) {
 	// while (true) {
+	if (state != State::READY) {
+		return;
+	}
+
 	const auto res = avcodec_send_packet(codec_context, pkt);
 	if (res == 0 || res == AVERROR(EAGAIN)) {
 		// packet received succesfully or context is still waiting on pulling the decoded frames
@@ -31,36 +41,47 @@ void PacketDecoder::handle(AVPacket *pkt) {
 	} else if (!ff_ok(res)) {
 		godot::UtilityFunctions::printerr("Frame Handler received Error");
 		state = State::ERROR;
+		return;
 	}
-	// break;
-	// }
-	// godot::UtilityFunctions::print("handle done");
-	// av_packet_unref(pkt);
+	receive();
 }
+// break;
+// }
+// godot::UtilityFunctions::print("handle done");
+// av_packet_unref(pkt);
+// 	receive();
+// }
+//
+void PacketDecoder::receive() {
+	if (state != State::DECODE) {
+		return;
+	}
+	AVFramePtr last_frame;
+	while (true) {
+		auto frame = av_frame_ptr();
+		const auto res = avcodec_receive_frame(codec_context, frame.get());
+		if (res == AVERROR(EAGAIN)) {
+			state = State::READY;
+			if (last_frame) {
+				frames.push_back(last_frame);
+			}
+			return;
+		}
+		if (!ff_ok(res)) {
+			state = State::ERROR;
+			return;
+		}
+		// frame is good, offer it straight away
+		// if (!frame_handler(frame)) {
 
-void PacketDecoder::process() {
+		last_frame = frame;
+		// }
+	}
+}
+void PacketDecoder::offer_frames() {
 	// offer any frames in the queue to the frame handler
 	if (!frames.empty()) {
 		const auto [from, to] = std::ranges::remove_if(frames, frame_handler);
 		frames.erase(from, to);
-	}
-
-	if (state != State::DECODE) {
-		return;
-	}
-
-	auto frame = av_frame_ptr();
-	const auto res = avcodec_receive_frame(codec_context, frame.get());
-	if (res == AVERROR(EAGAIN)) {
-		state = State::READY;
-		return;
-	}
-	if (!ff_ok(res)) {
-		state = State::ERROR;
-		return;
-	}
-	// frame is good, offer it straight away
-	if (!frame_handler(frame)) {
-		frames.push_back(frame);
 	}
 }

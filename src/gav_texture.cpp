@@ -239,9 +239,9 @@ bool GAVTexture::setup_pipeline(AVPixelFormat pixel_format) {
 			int w = line_size;
 			auto tex_format = RenderingDevice::DATA_FORMAT_R8_UNORM;
 
-			if (pixel_format == AV_PIX_FMT_P016LE
-					// || (pixel_format == AV_PIX_FMT_YUV420P10LE)
-			) {
+			if (
+					pixel_format == AV_PIX_FMT_P016LE ||
+					pixel_format == AV_PIX_FMT_P010LE) {
 				w /= 2;
 				tex_format = RenderingDevice::DATA_FORMAT_R16_UNORM;
 			}

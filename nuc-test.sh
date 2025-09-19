@@ -2,4 +2,4 @@
 
 rsync -raP demo tweaklab@192.168.35.96:
 
-ssh tweaklab@192.168.35.96 -t "cd demo && ANV_VIDEO_DECODE=1 DISPLAY=:0 ./godot.linuxbsd.editor.x86_64"
+ssh tweaklab@192.168.35.96 -t "cd demo && ANV_VIDEO_DECODE=1 DISPLAY=:0 ./godot.linuxbsd.editor.x86_64 --resolution 2160x3840"

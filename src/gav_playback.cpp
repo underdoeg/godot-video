@@ -137,40 +137,6 @@ bool GAVPlayback::load(const String &file_path) {
 // 	while (!request_stop) {
 // 	}
 // }
-void GAVPlayback::read_next_packet() {
-	// read the next frame in the file if all frame handlers are ready for a new frame
-	bool all_handlers_ready = true;
-	for (const auto &val : frame_handlers | std::views::values) {
-		if (!val.is_ready()) {
-			all_handlers_ready = false;
-			break;
-		}
-	}
-
-	if (!all_handlers_ready) {
-		// cannot handle a new packet yet
-		return;
-	}
-
-	const auto ret = av_read_frame(fmt_ctx, pkt);
-	if (ret == AVERROR_EOF) {
-		if (do_loop) {
-			// TODO: not that efficient to recreate the entire video pipeline
-			init();
-			// av_packet_unref(pkt);
-			return;
-		}
-		decode_is_done = true;
-		av_packet_unref(pkt);
-		return;
-	}
-	if (ff_ok(ret) && frame_handlers.contains(pkt->stream_index)) {
-		frame_handlers.at(pkt->stream_index).handle(pkt);
-		av_packet_unref(pkt);
-	} else {
-		av_packet_unref(pkt);
-	}
-}
 
 bool GAVPlayback::init() {
 	if (!file_path_requested) {
@@ -490,13 +456,21 @@ bool GAVPlayback::init_video() {
 		auto time = frame_time(frame, time_base);
 		if (time <= Clock::now()) {
 			// frame should be displayed. do it now;
-			video_frame_to_show = frame;
+			VideoFrameType type = VideoFrameType::SW;
+			if (accel_config) {
+				if (accel_config->device_type == AV_HWDEVICE_TYPE_VULKAN && GODOT_VULKAN_PATCHED) {
+					type = VideoFrameType::VK;
+				}else {
+					type = VideoFrameType::HW;
+				}
+			}
+			video_frame_to_show = {frame, type};
 			// av_frame_copy(video_frame_to_show.get(), frame.get());
 			auto pos = time - start_time;
 			progress_millis = std::chrono::duration_cast<std::chrono::milliseconds>(pos).count();
 			return true;
 		}
-		return false; }, 2));
+		return false; }, 5));
 
 	video_ctx_ready = true;
 	return true;
@@ -616,7 +590,7 @@ bool GAVPlayback::init_audio() {
 		}
 		memcpy(buff.ptrw(), audio_frame->data[0], byte_size);
 		mix_audio(audio_frame->nb_samples, buff, 0);
-		return true; }, 10));
+		return true; }, 20));
 
 	audio_ctx_ready = true;
 	return true;
@@ -729,48 +703,100 @@ void GAVPlayback::_play() {
 	set_state(State::PLAYING);
 }
 
+bool GAVPlayback::read_next_packet() {
+	// read the next frame in the file if all frame handlers are ready for a new frame
+	bool any_handler_full = false;
+	for (const auto &val : frame_handlers | std::views::values) {
+		if (val.is_full()) {
+			any_handler_full = true;
+			break;
+		}
+	}
+
+	if (any_handler_full) {
+		// cannot handle a new packet yet
+		return false;
+	}
+
+	const auto ret = av_read_frame(fmt_ctx, pkt);
+	if (ret == AVERROR_EOF) {
+		if (do_loop) {
+			// TODO: not that efficient to recreate the entire video pipeline
+			init();
+			// av_packet_unref(pkt);
+			return false;
+		}
+		decode_is_done = true;
+		av_packet_unref(pkt);
+		return false;
+	}
+	if (ff_ok(ret) && frame_handlers.contains(pkt->stream_index)) {
+		frame_handlers.at(pkt->stream_index).handle(pkt);
+		av_packet_unref(pkt);
+	} else {
+		av_packet_unref(pkt);
+	}
+	return true;
+}
+void GAVPlayback::read_packets() {
+	if (!fmt_ctx || !pkt) {
+		return;
+	}
+
+	int read_count = 0;
+	while (read_next_packet() && read_count < 100) {
+		read_count++;
+	}
+
+	// process frame handlers
+	// for (auto &val : frame_handlers | std::views::values) {
+	// val.process();
+	// }
+	// }
+
+	for (auto &val : frame_handlers | std::views::values) {
+		val.offer_frames();
+	}
+}
+bool GAVPlayback::show_active_video_frame() {
+	// process might have given us a new video frame, update_from_vulkan the texture
+
+	// TOO: not necessary when not in threaded mode, but leave for now
+	std::scoped_lock lock(video_mtx);
+
+	if (!video_frame_to_show)
+		return false;
+
+	texture->codec_ctx = video_codec_ctx;
+	switch (video_frame_to_show->type) {
+		case SW:
+			texture->update_from_sw(video_frame_to_show->frame);
+			break;
+		case HW:
+			texture->update_from_hw(video_frame_to_show->frame);
+			break;
+		case VK:
+			texture->update_from_vulkan(video_frame_to_show->frame);
+			break;
+	}
+	return true;
+}
+
 void GAVPlayback::_update(double p_delta) {
 	if (Engine::get_singleton()->is_editor_hint()) {
 		return;
 	}
 
-	if (waiting_for_init) {
-		UtilityFunctions::print("waiting for init...");
-		init();
-	}
-
-	if (!fmt_ctx || !pkt) {
-		return;
-	}
-	// if (!video_ctx_ready && !audio_ctx_ready)
-	// return;
-
-	// make sure the buffer has some data
-	for (int i = 0; i < 20; i++) {
-		// read more data from the file
-		read_next_packet();
-
-		// process frame handlers
-		for (auto &val : frame_handlers | std::views::values) {
-			val.process();
+	if (!decoder_threaded) {
+		if (waiting_for_init) {
+			UtilityFunctions::print("waiting for init...");
+			init();
 		}
+
+		read_packets();
 	}
 
-	// process might have given us a new video frame, update_from_vulkan the texture
-	if (video_frame_to_show) {
-		// UtilityFunctions::print(filename, ": ", video_frame_to_show->width, "x", video_frame_to_show->height);
-		if (accel_config) {
-			if (accel_config->device_type == AV_HWDEVICE_TYPE_VULKAN && GODOT_VULKAN_PATCHED) {
-				texture->codec_ctx = video_codec_ctx;
-				texture->update_from_vulkan(video_frame_to_show);
-			} else {
-				texture->update_from_hw(video_frame_to_show);
-			}
-		} else {
-			texture->update_from_sw(video_frame_to_show);
-		}
-		video_frame_to_show.reset();
-	}
+	show_active_video_frame();
 
 	if (decode_is_done) {
 		// check if all frames have been displayed

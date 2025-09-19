@@ -8,6 +8,7 @@
 #include <godot_cpp/classes/texture2drd.hpp>
 #include <godot_cpp/classes/video_stream_playback.hpp>
 #include <map>
+#include <optional>
 #include <thread>
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -21,6 +22,17 @@ extern "C" {
 #define GODOT_VULKAN_PATCHED false
 #endif
 // #define GODOT_VULKAN_PATCHED false
+
+enum VideoFrameType {
+	SW,
+	HW,
+	VK
+};
+
+struct ActiveVideoFrame {
+	AVFramePtr frame;
+	VideoFrameType type;
+};
 
 class GAVPlayback : public godot::VideoStreamPlayback {
 	struct VideoInfo {
@@ -89,18 +101,21 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 	const AVCodecHWConfig *accel_config = nullptr;
 
 	// if set this frame will be sent to the renderer
-	AVFramePtr video_frame_to_show;
+	std::optional<ActiveVideoFrame> video_frame_to_show;
 	int64_t progress_millis;
 
 	// audio resampling
 	SwrContext *audio_resampler = nullptr;
 	AVFramePtr audio_frame;
 
-	bool decode_is_done = false;
+	std::atomic_bool decode_is_done = false;
+	bool read_next_packet();
+	void read_packets();
 
-	void read_next_packet();
+	bool show_active_video_frame();
 
 	std::atomic_bool request_stop = false;
+	std::mutex video_mtx;
 	int max_frame_buffer_size = 4;
 
 	void set_state(State state);
@@ -112,6 +127,9 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 	std::map<int, PacketDecoder> frame_handlers;
 
 	void cleanup(bool with_format_ctx);
+
+	std::thread decoder_thread;
+	bool decoder_threaded = false;
 
 public:
 	GAVPlayback();

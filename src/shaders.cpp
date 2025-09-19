@@ -247,8 +247,8 @@ godot::RID p010le(godot::RenderingDevice *rd, godot::Vector2i size) {
 		layout(local_size_x = 8, local_size_y = 8, local_size_z = 1) in;
 
 		layout (set=0, binding=0, rgba8) uniform image2D result;
-		layout (set=0, binding=1, r8) readonly uniform image2D Y;
-		layout (set=0, binding=2, r8) readonly uniform image2D UV;
+		layout (set=0, binding=1, r16) readonly uniform image2D Y;
+		layout (set=0, binding=2, r16) readonly uniform image2D UV;
 
 		// The code we want to execute in each invocation
 		void main() {
