@@ -65,7 +65,8 @@ void PacketDecoder::receive() {
 			if (last_frame) {
 				// frame is good, offer it straight away or add it to the queue
 				// if (!frame_handler(frame)) {
-					frames.push_back(last_frame);
+				frames.push_back(last_frame);
+				// offer_frames();
 				// }
 			}
 			return;

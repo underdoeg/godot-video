@@ -93,9 +93,9 @@ RID GAVTexture::setup(int w, int h, RenderingDevice *_rd) {
 	if (verbose_logging)
 		UtilityFunctions::print("create texture of size ", width, "x", height);
 	//
-	if (width % 8 != 0 || height % 8 != 0) {
+	if (width % 4 != 0 || height % 4 != 0) {
 		// This is relevant because of the compute shader sizes
-		UtilityFunctions::printerr("video width and height should be divisible by 8. it might still work, but miss a few pixels");
+		UtilityFunctions::printerr("video width and height should be divisible by 4. it might still work, but miss a few pixels");
 	}
 
 	// the output texture
@@ -148,6 +148,7 @@ RID GAVTexture::setup(int w, int h, RenderingDevice *_rd) {
 			vk_texture, format->get_width(), format->get_height(), format->get_depth(), format->get_array_layers());
 	//argument removed for compatibility with godot 4.4. , format->get_mipmaps());
 	// texture->set_texture_rd_rid(texture_rid_main);
+	is_first_frame = true;
 	return texture_rid_main;
 
 	// the pixel format  reported might change on the first frame, so we create the shader in update_from_vulkan
@@ -164,8 +165,11 @@ void GAVTexture::set_black() {
 
 	black.resize(width * height * 4);
 	auto ptr = black.ptrw();
-	for (size_t i = 3; i < black.size(); i += 4) {
-		ptr[i] = 0xff;
+	for (size_t i = 0; i < black.size(); i += 4) {
+		ptr[i] = 0;
+		ptr[i + 1] = 0;
+		ptr[i + 2] = 0;
+		ptr[i + 3] = 0xff;
 	}
 	rd->texture_update(texture_rid, 0, black);
 }
@@ -323,11 +327,13 @@ bool GAVTexture::setup_pipeline(AVPixelFormat pixel_format) {
 		UtilityFunctions::printerr("Could not bind textures to conversion shader, shader is invalid");
 		return false;
 	}
+	set_black();
+	is_first_frame = true;
 	pipeline_format = pixel_format;
 	return true;
 }
 
-void GAVTexture::run_conversion_shader() const {
+void GAVTexture::run_conversion_shader() {
 	// run the conversion shader
 	if (!conversion_shader.is_valid()) {
 		UtilityFunctions::printerr("Conversion shader is invalid");
@@ -341,12 +347,18 @@ void GAVTexture::run_conversion_shader() const {
 		UtilityFunctions::printerr("Conversion pipeline is invalid");
 		return;
 	}
+
+	if (is_first_frame) {
+		is_first_frame = false;
+		return;;
+	}
+
 	if (!test_copy) {
 		// calculate invocation size
 		auto compute = rd->compute_list_begin();
 		rd->compute_list_bind_compute_pipeline(compute, conversion_pipeline);
 		rd->compute_list_bind_uniform_set(compute, conversion_shader_uniform_set, 0);
-		rd->compute_list_dispatch(compute, std::floor(width / 8), std::floor(height / 8), 1);
+		rd->compute_list_dispatch(compute, std::floor(width / 4), std::floor(height / 4), 1);
 		rd->compute_list_end();
 		if (rd != RenderingServer::get_singleton()->get_rendering_device()) {
 			rd->submit();

@@ -53,7 +53,8 @@ private:
 	AVPixelFormat pipeline_format = AV_PIX_FMT_NONE;
 
 	bool setup_pipeline(AVPixelFormat pixel_format);
-	void run_conversion_shader() const;
+	void run_conversion_shader();
+	bool is_first_frame = true;
 
 public:
 	GAVTexture();
