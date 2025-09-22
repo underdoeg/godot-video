@@ -164,13 +164,13 @@ void GAVTexture::set_black() {
 	}
 
 	black.resize(width * height * 4);
-	auto ptr = black.ptrw();
-	for (size_t i = 0; i < black.size(); i += 4) {
-		ptr[i] = 0;
-		ptr[i + 1] = 0;
-		ptr[i + 2] = 0;
-		ptr[i + 3] = 0xff;
-	}
+	// auto ptr = black.ptrw();
+	// for (size_t i = 0; i < black.size(); i += 4) {
+	// 	ptr[i] = 0;
+	// 	ptr[i + 1] = 0;
+	// 	ptr[i + 2] = 0;
+	// 	ptr[i + 3] = 0;
+	// }
 	rd->texture_update(texture_rid, 0, black);
 }
 
