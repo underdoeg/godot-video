@@ -148,7 +148,9 @@ RID GAVTexture::setup(int w, int h, RenderingDevice *_rd) {
 			vk_texture, format->get_width(), format->get_height(), format->get_depth(), format->get_array_layers());
 	//argument removed for compatibility with godot 4.4. , format->get_mipmaps());
 	// texture->set_texture_rd_rid(texture_rid_main);
-	is_first_frame = true;
+
+	pipeline_ready = false;
+
 	return texture_rid_main;
 
 	// the pixel format  reported might change on the first frame, so we create the shader in update_from_vulkan
@@ -176,6 +178,7 @@ void GAVTexture::set_black() {
 
 bool GAVTexture::setup_pipeline(AVPixelFormat pixel_format) {
 	if (pipeline_format == pixel_format) {
+		pipeline_ready = true;
 		return true;
 	}
 
@@ -328,8 +331,8 @@ bool GAVTexture::setup_pipeline(AVPixelFormat pixel_format) {
 		return false;
 	}
 	set_black();
-	is_first_frame = true;
 	pipeline_format = pixel_format;
+	pipeline_ready = true;
 	return true;
 }
 
@@ -346,11 +349,6 @@ void GAVTexture::run_conversion_shader() {
 	if (!conversion_pipeline.is_valid()) {
 		UtilityFunctions::printerr("Conversion pipeline is invalid");
 		return;
-	}
-
-	if (is_first_frame) {
-		is_first_frame = false;
-		return;;
 	}
 
 	if (!test_copy) {
@@ -570,7 +568,6 @@ void GAVTexture::update_from_vulkan(const AVFramePtr &frame) {
 
 void GAVTexture::frame_to_buffers(const AVFramePtr &frame, Buffers &buffers) const {
 	for (int i = 0; i < num_planes; i++) {
-		auto plane = planes[i];
 		auto info = plane_infos[i];
 
 		const auto byte_size = frame->linesize[0] * info.height;
@@ -606,8 +603,8 @@ void GAVTexture::update_from_buffers(const Buffers &buffers, AVPixelFormat forma
 	for (int i = 0; i < num_planes; i++) {
 		auto plane = planes[i];
 		if (!buffers[i].size()) {
-			// UtilityFunctions::printerr("buffer for plane", i, " is empty");
-			continue;
+			UtilityFunctions::printerr("buffer for plane", i, " is empty");
+			return;
 		}
 		rd->texture_update(plane, 0, buffers[i]);
 	}
@@ -615,6 +612,10 @@ void GAVTexture::update_from_buffers(const Buffers &buffers, AVPixelFormat forma
 }
 
 void GAVTexture::update_from_sw(const AVFramePtr &frame) {
+	if (!setup_pipeline(static_cast<AVPixelFormat>(frame->format))) {
+		UtilityFunctions::printerr("failed to setup render pipeline");
+		return;
+	}
 	{
 		// TimeMeasue t("frame_to_buffers");
 		frame_to_buffers(frame, plane_buffers);

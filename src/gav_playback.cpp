@@ -41,6 +41,7 @@ static std::map<int, std::vector<AVBufferRef *>> hw_devices;
 
 void GAVPlayback::_bind_methods() {
 	ADD_SIGNAL(MethodInfo("finished"));
+	ADD_SIGNAL(MethodInfo("started"));
 }
 
 GAVPlayback::GAVPlayback() {
@@ -476,7 +477,7 @@ bool GAVPlayback::init_video() {
 			}
 			return true;
 		}
-		return false; }, 3));
+		return false; }, 10));
 
 	video_ctx_ready = true;
 	return true;
@@ -565,38 +566,41 @@ bool GAVPlayback::init_audio() {
 			return false;
 		}
 
-		if (!audio_frame) {
-			audio_frame = av_frame_ptr();
-		}else {
-			av_frame_unref(audio_frame.get());
-		}
+		// if (!audio_frame) {
+		// 	audio_frame = av_frame_ptr();
+		// }else {
+		// 	av_frame_unref(audio_frame.get());
+		// }
+		auto output_frame = av_frame_ptr();
 
-		audio_frame->format = out_sample_fmt;
-		audio_frame->ch_layout = channel_layout;
-		audio_frame->sample_rate = audio_sample_rate;
-		audio_frame->nb_samples = frame->nb_samples;
+		output_frame->format = out_sample_fmt;
+		output_frame->ch_layout = channel_layout;
+		output_frame->sample_rate = audio_sample_rate;
+		output_frame->nb_samples = frame->nb_samples;
 
-		if (!ff_ok(swr_convert_frame(audio_resampler, audio_frame.get(), frame.get()))) {
+		if (!ff_ok(swr_convert_frame(audio_resampler, output_frame.get(), frame.get()))) {
 			UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "Failed to convert audio resampled data");
 			return true;
 		}
 
 		//
-		if (audio_frame->format != out_sample_fmt) {
+		if (output_frame->format != out_sample_fmt) {
 			UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "Audio resampled data format doesn't match");
 			return true;
 		}
 
+		std::scoped_lock g(audio_mtx);
+		audio_frames.push(output_frame);
 		// // copy data
-		PackedFloat32Array buff;
-		int line_size = 0;
-		const auto byte_size = av_samples_get_buffer_size(&line_size, channel_layout.nb_channels, audio_frame->nb_samples, out_sample_fmt, 0);
-		if (buff.size() < byte_size/sizeof(float)) {
-			buff.resize(byte_size / sizeof(float));
-		}
-		memcpy(buff.ptrw(), audio_frame->data[0], byte_size);
-		mix_audio(audio_frame->nb_samples, buff, 0);
-		return true; }, 10));
+		// PackedFloat32Array buff;
+		// int line_size = 0;
+		// const auto byte_size = av_samples_get_buffer_size(&line_size, channel_layout.nb_channels, audio_frame->nb_samples, out_sample_fmt, 0);
+		// if (buff.size() < byte_size/sizeof(float)) {
+		// 	buff.resize(byte_size / sizeof(float));
+		// }
+		// memcpy(buff.ptrw(), audio_frame->data[0], byte_size);
+		// mix_audio(audio_frame->nb_samples, buff, 0);
+		return true; }, 30));
 
 	audio_ctx_ready = true;
 	return true;
@@ -655,7 +659,7 @@ void GAVPlayback::cleanup(bool with_format_ctx) {
 
 	audio_resampler = nullptr;
 	audio_codec_ctx = nullptr;
-	audio_frame.reset();
+	// audio_frame.reset();
 	video_codec_ctx = audio_codec_ctx = nullptr;
 	video_frame_to_show.reset();
 	// audio_frame.reset();
@@ -670,6 +674,10 @@ void GAVPlayback::cleanup(bool with_format_ctx) {
 			fmt_ctx = nullptr;
 		}
 		fmt_ctx = nullptr;
+	}
+
+	if (decoder_thread.joinable()) {
+		decoder_thread.join();
 	}
 
 	// if (verbose_logging)
@@ -687,8 +695,9 @@ void GAVPlayback::_stop() {
 	}
 	video_frame_to_show.reset();
 	video_frame_to_show_thread.reset();
-	avformat_flush(fmt_ctx);
-	_seek(0);
+	// avformat_flush(fmt_ctx);
+	// _seek(0);
+
 	// if (texture) {
 	// 	texture->set_black();
 	// }
@@ -789,7 +798,24 @@ bool GAVPlayback::show_active_video_frame() {
 			texture->update_from_buffers(*video_frame_to_show->buffer, video_frame_to_show->pixel_format);
 	}
 	video_frame_to_show.reset();
+	emit_signal("started");
 	return true;
+}
+
+void GAVPlayback::output_audio_frames() {
+	std::scoped_lock g(audio_mtx);
+	while (!audio_frames.empty()) {
+		auto f = audio_frames.front();
+		// // copy data
+		int line_size = 0;
+		const auto byte_size = av_samples_get_buffer_size(&line_size, f->ch_layout.nb_channels, f->nb_samples, static_cast<AVSampleFormat>(f->format), 0);
+		// if (audio_buff.size() < byte_size/sizeof(float)) {
+		audio_buff.resize(byte_size / sizeof(float));
+		// }
+		memcpy(audio_buff.ptrw(), f->data[0], byte_size);
+		mix_audio(f->nb_samples, audio_buff, 0);
+		audio_frames.pop();
+	}
 }
 
 void GAVPlayback::decoder_threaded_func() {
@@ -799,18 +825,18 @@ void GAVPlayback::decoder_threaded_func() {
 	}
 	UtilityFunctions::print(filename, ": run threaded decoder");
 
-	std::array<GAVTexture::BuffersPtr, 5> buffers = {};
+	std::array<GAVTexture::BuffersPtr, 10> buffers = {};
 	for (auto &buff : buffers) {
 		buff = std::make_shared<GAVTexture::Buffers>();
 	}
 	int buffers_index = 0;
 
-	size_t frame_num = 0;
+	int frame_num = -1;
 
 	while (state != State::STOPPED) {
 		auto now = std::chrono::high_resolution_clock::now();
 		auto next = now + std::chrono::milliseconds(1000 / 120);
-		read_packets(8);
+		read_packets(20);
 		if (video_frame_to_show_thread) {
 			frame_num++;
 			// UtilityFunctions::print(frame_num);
@@ -830,11 +856,27 @@ void GAVPlayback::decoder_threaded_func() {
 					UtilityFunctions::printerr("Could not transfer_data from hw to sw");
 				}
 			}
+			if (!texture->pipeline_ready) {
+				// not great, but first frame is not ready, because the texture has no idea how to convert buffer
+				// so send the converted one
+				video_frame_to_show = {
+					target,
+					{},
+					VideoFrameType::SW,
+					static_cast<AVPixelFormat>(target->format)
+				};
+				continue;
+			}
 
 			buffers_index++;
 			buffers_index %= buffers.size();
 			auto buff = buffers[buffers_index];
+
 			texture->frame_to_buffers(target, *buff);
+			// if (buff->at(0).size()) {
+			// 	UtilityFunctions::print("buff empty");
+			// 	continue;
+			// }
 			video_frame_to_show_thread.reset();
 
 			std::scoped_lock lock(decoder_mtx);
@@ -869,6 +911,7 @@ void GAVPlayback::_update(double p_delta) {
 		read_packets();
 	}
 
+	output_audio_frames();
 	show_active_video_frame();
 
 	if (decode_is_done) {

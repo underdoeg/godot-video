@@ -9,6 +9,7 @@
 #include <godot_cpp/classes/video_stream_playback.hpp>
 #include <map>
 #include <optional>
+#include <queue>
 #include <thread>
 extern "C" {
 #include <libavcodec/avcodec.h>
@@ -111,11 +112,11 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 
 	// audio resampling
 	SwrContext *audio_resampler = nullptr;
-	AVFramePtr audio_frame;
+	// AVFramePtr audio_frame;
 
 	std::atomic_bool decode_is_done = false;
 	bool read_next_packet();
-	void read_packets(int amount=20);
+	void read_packets(int amount = 20);
 
 	bool show_active_video_frame();
 
@@ -136,6 +137,11 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 	bool decoder_threaded = false;
 	void decoder_threaded_func();
 	std::mutex decoder_mtx;
+
+	std::mutex audio_mtx;
+	std::queue<AVFramePtr> audio_frames;
+	godot::PackedFloat32Array audio_buff;
+	void output_audio_frames();
 
 public:
 	GAVPlayback();

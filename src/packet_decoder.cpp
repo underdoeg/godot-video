@@ -29,7 +29,7 @@ bool PacketDecoder::is_full() const {
 
 void PacketDecoder::handle(AVPacket *pkt) {
 	// while (true) {
-	if (state != State::READY) {
+	if (state == State::DECODE) {
 		return;
 	}
 
@@ -66,7 +66,7 @@ void PacketDecoder::receive() {
 				// frame is good, offer it straight away or add it to the queue
 				// if (!frame_handler(frame)) {
 				frames.push_back(last_frame);
-				// offer_frames();
+				offer_frames();
 				// }
 			}
 			return;

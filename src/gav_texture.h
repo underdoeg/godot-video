@@ -11,6 +11,8 @@
 #include "godot_cpp/classes/rendering_device.hpp"
 #include "godot_cpp/classes/texture2drd.hpp"
 
+#include <stdatomic.h>
+
 extern "C" {
 #include <libavcodec/avcodec.h>
 }
@@ -54,13 +56,14 @@ private:
 
 	bool setup_pipeline(AVPixelFormat pixel_format);
 	void run_conversion_shader();
-	bool is_first_frame = true;
 
 public:
 	GAVTexture();
 	~GAVTexture();
 	bool test_copy = false;
 	AVCodecContext *codec_ctx = nullptr;
+
+	atomic_bool pipeline_ready = false;
 
 	int get_width() const { return width; }
 	int get_height() const { return height; }
