@@ -1,6 +1,6 @@
 #include "register_types.h"
 
-#include "gav_loader.h"
+#include "../src/gav_loader.h"
 
 #include <gdextension_interface.h>
 #include <godot_cpp/classes/resource_loader.hpp>

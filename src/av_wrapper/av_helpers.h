@@ -1,0 +1,21 @@
+#pragma once
+
+#include <chrono>
+#include <memory>
+#include <string>
+
+extern "C" {
+#include <libavcodec/avcodec.h>
+#include <libavcodec/packet.h>
+#include <libavutil/frame.h>
+}
+
+std::string av_error_string(int error);
+
+using AvFramePtr = std::shared_ptr<AVFrame>;
+AvFramePtr av_frame_ptr();
+
+using AvPacketPtr = std::shared_ptr<AVPacket>;
+AvPacketPtr av_packet_ptr();
+
+std::chrono::milliseconds get_frame_millis(const AvFramePtr &frame, const AVCodecContext *codec);

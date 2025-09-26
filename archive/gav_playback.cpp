@@ -45,7 +45,7 @@ void GAVPlayback::_bind_methods() {
 }
 
 GAVPlayback::GAVPlayback() {
-	// UtilityFunctions::print("Create new GAVPlayback");
+	UtilityFunctions::print("Create new GAVPlayback");
 }
 
 GAVPlayback::~GAVPlayback() {
@@ -55,9 +55,6 @@ GAVPlayback::~GAVPlayback() {
 	// av_frame_unref(video_frame_to_show.get());
 	av_packet_unref(pkt);
 	av_packet_free(&pkt);
-	// // if (thread.joinable()) {
-	// // 	thread.join();
-	// // }
 	// if (video_codec_ctx)
 	// 	avcodec_free_context(&video_codec_ctx);
 	// if (audio_codec_ctx)
@@ -178,13 +175,15 @@ bool GAVPlayback::request_init() {
 
 	cleanup(false);
 
-	decoder_threaded = true;
+	decoder_threaded = false;
 #if GODOT_VULKAN_PATCHED
 	decoder_threaded = false;
 #endif
 
 	if (decoder_threaded) {
 		// run a thread
+
+		decoder_thread_keep_running = false;
 		decoder_thread = std::thread([&] {
 			decoder_threaded_func();
 		});
@@ -636,9 +635,12 @@ void GAVPlayback::set_state(State new_state) {
 void GAVPlayback::cleanup(bool with_format_ctx) {
 	if (verbose_logging)
 		UtilityFunctions::print(filename, ": ", "Cleanup");
+
+	decoder_thread_keep_running = false;
 	if (decoder_thread.joinable()) {
 		UtilityFunctions::print(filename, ": cleanup wait for decoder thread");
 		decoder_thread.join();
+		UtilityFunctions::print(filename, ": cleanup decoder thread done");
 	}
 
 	if (video_codec_ctx) {
@@ -674,18 +676,16 @@ void GAVPlayback::cleanup(bool with_format_ctx) {
 			fmt_ctx = nullptr;
 		}
 		fmt_ctx = nullptr;
-	}
-
-	if (decoder_thread.joinable()) {
-		decoder_thread.join();
+	} else if (fmt_ctx) {
+		avformat_seek_file(fmt_ctx, 0, 0, 0, 0, AVSEEK_FLAG_ANY);
 	}
 
 	// if (verbose_logging)
 	// UtilityFunctions::print(filename, ": ", "Cleanup done");
 }
 void GAVPlayback::_stop() {
-	if (verbose_logging)
-		UtilityFunctions::print(filename, ": ", "Stopping playback");
+	// if (verbose_logging)
+	// UtilityFunctions::print(filename, ": ", "Stopping playback");
 	set_state(STOPPED);
 	if (!fmt_ctx) {
 		return;
@@ -721,6 +721,7 @@ void GAVPlayback::_play() {
 		UtilityFunctions::UtilityFunctions::printerr(filename, ": ", "Cannot play. No video or audio stream");
 		return;
 	}
+	UtilityFunctions::print(filename, ": ", "Playing");
 	set_state(State::PLAYING);
 }
 
@@ -823,6 +824,7 @@ void GAVPlayback::decoder_threaded_func() {
 		UtilityFunctions::printerr(filename, ": request_init error => abort threaded decoder");
 		return;
 	}
+
 	UtilityFunctions::print(filename, ": run threaded decoder");
 
 	std::array<GAVTexture::BuffersPtr, 10> buffers = {};
@@ -833,10 +835,17 @@ void GAVPlayback::decoder_threaded_func() {
 
 	int frame_num = -1;
 
-	while (state != State::STOPPED) {
+	decoder_thread_keep_running = true;
+
+	while (decoder_thread_keep_running) {
 		auto now = std::chrono::high_resolution_clock::now();
 		auto next = now + std::chrono::milliseconds(1000 / 120);
-		read_packets(20);
+
+		read_packets(10);
+
+		if (!decoder_thread_keep_running) {
+			break;
+		}
 		if (video_frame_to_show_thread) {
 			frame_num++;
 			// UtilityFunctions::print(frame_num);
@@ -856,6 +865,7 @@ void GAVPlayback::decoder_threaded_func() {
 					UtilityFunctions::printerr("Could not transfer_data from hw to sw");
 				}
 			}
+
 			if (!texture->pipeline_ready) {
 				// not great, but first frame is not ready, because the texture has no idea how to convert buffer
 				// so send the converted one
@@ -908,7 +918,7 @@ void GAVPlayback::_update(double p_delta) {
 	}
 
 	if (!decoder_threaded) {
-		read_packets();
+		read_packets(20);
 	}
 
 	output_audio_frames();

@@ -15,7 +15,7 @@ func _ready() -> void:
 	
 	%video_tex.texture = %video.get_video_texture()
 	%video_tex2.texture = %video.get_video_texture()
-		#
+
 	%video_dynamic2.stream = dynamic_video
 	
 	%video_dynamic2.play()
@@ -36,7 +36,7 @@ func load_many():
 	#await get_tree().process_frame
 	
 	$container.columns = 10
-	for i in range(30):
+	for i in range(4):
 		var player = VideoStreamPlayer.new()
 		player.size = Vector2(20, 20)
 		$container.add_child(player)

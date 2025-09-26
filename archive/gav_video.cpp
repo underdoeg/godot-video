@@ -78,8 +78,10 @@ void process_hardware_frame(AVCodecContext *ctx, AVFrame *av_frame) {
 	// av_frame_unref(frame);
 
 	if (!texture->get_texture_rd_rid()) {
-		if (verbose_logging)UtilityFunctions::print("create texture");
-		if (verbose_logging)UtilityFunctions::print("frame format is: ", av_get_pix_fmt_name(frames->sw_format));
+		if (verbose_logging)
+			UtilityFunctions::print("create texture");
+		if (verbose_logging)
+			UtilityFunctions::print("frame format is: ", av_get_pix_fmt_name(frames->sw_format));
 		const auto fmt = frames->sw_format; //AV_PIX_FMT_NV12; //AV_PIX_FMT_YUV420P;
 		int line_sizes[4];
 		size_t plane_sizes[4];
@@ -97,7 +99,8 @@ void process_hardware_frame(AVCodecContext *ctx, AVFrame *av_frame) {
 		for (int i = 0; i < 4; i++) {
 			plane_sizes_str += String::num_int64(plane_sizes[i]) + ", ";
 		}
-		if (verbose_logging) UtilityFunctions::print(plane_sizes_str);
+		if (verbose_logging)
+			UtilityFunctions::print(plane_sizes_str);
 		// create texture
 		auto rd = RenderingServer::get_singleton()->get_rendering_device();
 
@@ -446,7 +449,8 @@ static AVCodecContext *OpenVideoStream(AVFormatContext *fmt_ctx, int stream_idx,
 
 	// from here https://github.com/Themaister/Granite/blob/master/video/ffmpeg_hw_device.cpp
 
-	if (verbose_logging)UtilityFunctions::print("allocating HW device: ", av_hwdevice_get_type_name(device_type));
+	if (verbose_logging)
+		UtilityFunctions::print("allocating HW device: ", av_hwdevice_get_type_name(device_type));
 
 	// codec_ctx->hw_device_ctx = av_hwdevice_ctx_alloc(device_type);
 	auto hw_dev = av_hwdevice_ctx_alloc(device_type);
@@ -812,8 +816,9 @@ static AVCodecContext *OpenVideoStream(AVFormatContext *fmt_ctx, int stream_idx,
 		/* Enable threaded decoding, VVC decode is slow */
 		codec_ctx->thread_count = 4;
 		codec_ctx->thread_type = (FF_THREAD_FRAME | FF_THREAD_SLICE);
-	} else
+	} else {
 		codec_ctx->thread_count = 1;
+	}
 
 	auto frames = av_hwframe_ctx_alloc(codec_ctx->hw_device_ctx);
 	if (!frames) {

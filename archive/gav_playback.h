@@ -120,7 +120,6 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 
 	bool show_active_video_frame();
 
-	std::atomic_bool request_stop = false;
 	int max_frame_buffer_size = 4;
 
 	void set_state(State state);
@@ -137,6 +136,8 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 	bool decoder_threaded = false;
 	void decoder_threaded_func();
 	std::mutex decoder_mtx;
+	std::atomic_bool decoder_thread_keep_running = false;
+
 
 	std::mutex audio_mtx;
 	std::queue<AVFramePtr> audio_frames;

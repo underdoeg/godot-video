@@ -1,7 +1,7 @@
 [gd_scene load_steps=3 format=3 uid="uid://b568gxnsliogt"]
 
-[ext_resource type="VideoStream" uid="uid://knqxlh71h51e" path="res://Andrea_MASTER.mp4" id="1_38wt0"]
 [ext_resource type="Script" uid="uid://dcj2ph8clyi0n" path="res://single_video.gd" id="1_phvak"]
+[ext_resource type="VideoStream" uid="uid://knqxlh71h51e" path="res://Andrea_MASTER.mp4" id="2_phvak"]
 
 [node name="SingleVideo" type="ColorRect"]
 anchors_preset = 15
@@ -19,7 +19,7 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-stream = ExtResource("1_38wt0")
+stream = ExtResource("2_phvak")
 autoplay = true
 expand = true
 loop = true

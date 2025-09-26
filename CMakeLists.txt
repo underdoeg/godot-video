@@ -260,27 +260,24 @@ get_target_property(GODOTCPP_PLATFORM godot::cpp GODOTCPP_PLATFORM)
 # Now we can specify our own project which will inherit any global cmake properties or variables that have been defined.
 project(godot-video
         VERSION 1.0
-        DESCRIPTION "This repository serves as a quickstart template for GDExtension development with Godot 4.0+."
-        HOMEPAGE_URL "https://github.com/enetheru/godot-cpp-template/tree/main"
+        DESCRIPTION "godot video ffmpeg"
+        HOMEPAGE_URL "https://tweaklab.org"
         LANGUAGES CXX
 )
 
+
 add_library(${LIBNAME} SHARED
-        #        src/gav_video.cpp
-        src/gav_stream.cpp
-        src/gav_loader.cpp
-        src/register_types.cpp
-        src/gav_playback.cpp
-        src/gav_playback.h
-        src/vk_ctx.h
-        src/vk_ctx.cpp
-        src/helpers.h
-        src/gav_texture.cpp
-        src/gav_texture.h
-        src/shaders.h
-        src/shaders.cpp
-        src/packet_decoder.cpp
-        src/packet_decoder.h
+        src/godot/gav_loader.cpp
+        src/godot/gav_playback.cpp
+        src/godot/gav_settings.cpp
+        src/godot/gav_stream.cpp
+        src/godot/register_types.cpp
+        src/godot/shaders.cpp
+        src/godot/vk_ctx.cpp
+        src/av_wrapper/av_player.cpp
+        src/av_wrapper/av_player.h
+        src/av_wrapper/av_helpers.cpp
+        src/av_wrapper/av_helpers.h
 )
 
 #target_sources(${LIBNAME}
@@ -305,13 +302,15 @@ set(GODOT_PROJECT_BINARY_DIR "${PROJECT_SOURCE_DIR}/${GODOT_PROJECT_DIR}/bin/${G
 set(USE_SYSTEM_FFMPEG OFF CACHE BOOL "Use system installed ffmpeg instead of building from source")
 set(USE_GODOT_PATCHED OFF CACHE BOOL "Build for patched godot with vulkan video modules")
 
+target_include_directories(${LIBNAME} PUBLIC src src/godot)
+
 if (USE_GODOT_PATCHED)
     target_compile_definitions(${LIBNAME} PUBLIC -DGODOT_VULKAN_PATCHED=1)
 endif ()
 
 
 if (USE_SYSTEM_FFMPEG)
-    message("using system ffmpeg")
+    message("-- using system ffmpeg")
     #    target_include_directories(${LIBNAME} PRIVATE ${LIBS_INCLUDE}) #${CMAKE_BINARY_DIR}/ffmpeg/src/ffmpeg
     #    target_link_directories(${LIBNAME} PRIVATE ${LIBS_LINK})
     target_link_libraries(${LIBNAME} PRIVATE godot-cpp
@@ -322,7 +321,7 @@ if (USE_SYSTEM_FFMPEG)
             x264 x265 lzma bz2
     )
 else ()
-    message("using bundled ffmpeg")
+    message("-- using bundled ffmpeg")
     target_include_directories(${LIBNAME} PRIVATE ${LIBS_INCLUDE}) #${CMAKE_BINARY_DIR}/ffmpeg/src/ffmpeg
     target_link_directories(${LIBNAME} PRIVATE ${LIBS_LINK})
     target_link_libraries(${LIBNAME} PRIVATE godot-cpp

@@ -1,0 +1,488 @@
+//
+// Created by phwhitfield on 26.09.25.
+//
+
+#include "av_wrapper/av_player.h"
+
+#include "av_helpers.h"
+#include "godot_cpp/variant/utility_functions.hpp"
+
+extern "C" {
+#include <libavcodec/avcodec.h>
+#include <libavformat/avformat.h>
+#include <libavutil/channel_layout.h>
+#include <libavutil/hwcontext_vaapi.h>
+#include <libavutil/pixdesc.h>
+}
+
+bool AvPlayer::ff_ok(int result, const std::string &prepend) const {
+	if (result < 0) {
+		const auto error_str = av_error_string(result);
+		if (prepend.empty()) {
+			log._error(error_str.c_str());
+		} else {
+			log.error("{}: {}", prepend, error_str);
+		}
+		return false;
+	}
+	return true;
+}
+void AvPlayer::reset() {
+	log.verbose("reset begin");
+	output_settings = {};
+	filepath_loaded.reset();
+	video_stream_index.reset();
+	audio_stream_index.reset();
+	video_stream = nullptr;
+	audio_stream = nullptr;
+	file_info = {};
+	events = {};
+
+	if (video_hw_frames_ref) {
+		av_buffer_unref(&video_hw_frames_ref);
+		video_hw_frames_ref = nullptr;
+	}
+
+	log.verbose("reset end");
+}
+
+bool AvPlayer::init_video() {
+	// file_info.video.codec = video_stream->codecpar->codec_type
+	log.verbose("begin init_video");
+	file_info.video.width = video_stream->codecpar->width;
+	file_info.video.height = video_stream->codecpar->height;
+	file_info.video.frame_rate = av_q2d(video_stream->codecpar->framerate);
+	file_info.video.codec_name = avcodec_get_name(video_stream->codecpar->codec_id);
+	log.info("VIDEO - size: {}x{}, frame_rate: {}, codec: {}", file_info.video.width, file_info.video.height, file_info.video.frame_rate, file_info.video.codec_name);
+
+	// setup the decoder
+	const AVCodec *decoder = avcodec_find_decoder(video_stream->codecpar->codec_id);
+	if (!decoder) {
+		log.error("Could not find videodecoder");
+		return false;
+	}
+
+	// create the video codec context
+	video_codec = avcodec_alloc_context3(decoder);
+	if (!video_codec) {
+		log.error("Could not allocate video codec context");
+		return false;
+	}
+
+	if (!ff_ok(avcodec_parameters_to_context(video_codec, video_stream->codecpar))) {
+		log.error("Could not set video codec params");
+		return false;
+	}
+	video_codec->time_base = video_stream->time_base;
+
+	if (video_stream->codecpar->codec_id == AV_CODEC_ID_VVC) {
+		video_codec->strict_std_compliance = -2;
+
+		/* Enable threaded decoding, VVC decode is slow */
+		video_codec->thread_count = 4;
+		video_codec->thread_type = (FF_THREAD_FRAME | FF_THREAD_SLICE);
+	} else {
+		video_codec->thread_count = 1;
+	}
+
+	std::vector<const AVCodecHWConfig *> hw_configs;
+	// find the best hardware accelerated video config
+	int i = 0;
+	const AVCodecHWConfig *hw_config = nullptr;
+	while ((hw_config = avcodec_get_hw_config(decoder, i++)) != nullptr) {
+		if (hw_config->device_type == AV_HWDEVICE_TYPE_CUDA) {
+			// cuda is slow, TODO: try to not even compile it into ffmpeg?
+			continue;
+		}
+		hw_configs.push_back(hw_config);
+		log.verbose("found hw config: '{}'", av_hwdevice_get_type_name(hw_config->device_type));
+	}
+
+	if (hw_configs.empty()) {
+		log.error("no supported hw acceleration found");
+		return false;
+	}
+
+	AVBufferRef *hw_device = nullptr;
+	auto create_hw_device = [&](const AVCodecHWConfig *conf) {
+		log.verbose("attempting to create hw device '{}'", av_hwdevice_get_type_name(conf->device_type));
+
+		if (!ff_ok(av_hwdevice_ctx_create(&hw_device, conf->device_type, nullptr, nullptr, 0))) {
+			if (hw_device) {
+				av_buffer_unref(&hw_device);
+				hw_device = nullptr;
+			}
+		}
+
+		if (hw_device) {
+			log.verbose("created hw device: '{}'", av_hwdevice_get_type_name(conf->device_type));
+			output_settings.video_hw_type = conf->device_type;
+			hw_config = conf;
+			return true;
+		}
+		log.warn("could not create device");
+		return false;
+	};
+
+	if (output_settings_requested.video_hw_type != AV_HWDEVICE_TYPE_NONE) {
+		for (const auto &hw : hw_configs) {
+			if (hw->device_type == output_settings.video_hw_type) {
+				if (!create_hw_device(hw)) {
+					log.warn("Could not create requested hw device type: {}", av_hwdevice_get_type_name(hw->device_type));
+				}
+				break;
+			}
+		}
+	}
+
+	if (!hw_device) {
+		log.verbose("request hw device was not created, attempt autodetect");
+		for (const auto &hw : hw_configs) {
+			if (create_hw_device(hw)) {
+				break;
+			}
+		}
+	}
+
+	if (hw_device) {
+		log.verbose("allocate hw device");
+		video_hw_frames_ref = av_hwframe_ctx_alloc(hw_device);
+		output_settings.video_hw_enabled = true;
+
+		auto *ctx = reinterpret_cast<AVHWFramesContext *>(video_hw_frames_ref->data);
+		ctx->format = hw_config->pix_fmt;
+		ctx->width = video_codec->width;
+		ctx->height = video_codec->height;
+		ctx->sw_format = video_codec->sw_pix_fmt;
+
+		// detect valid sw formats
+		AVHWFramesConstraints *hw_frames_const = av_hwdevice_get_hwframe_constraints(hw_device, nullptr);
+		for (AVPixelFormat *p = hw_frames_const->valid_sw_formats;
+				*p != AV_PIX_FMT_NONE; p++) {
+			log.verbose("HW decoder pixel supported pixel format: {}", av_get_pix_fmt_name(*p));
+			if (ctx->sw_format == AV_PIX_FMT_NONE || *p == AV_PIX_FMT_YUV420P) {
+				ctx->sw_format = *p;
+			}
+		}
+
+		log.info("HW decoder using pixel foramt: {}", av_get_pix_fmt_name(ctx->sw_format));
+
+		if (!ff_ok(av_hwframe_ctx_init(video_hw_frames_ref))) {
+			log.error("Could not initialize hw frame");
+		} else {
+			video_codec->hw_device_ctx = hw_device;
+			video_codec->hw_frames_ctx = video_hw_frames_ref;
+			// video_codec->pix_fmt = ctx;
+		}
+	}
+
+	if (!video_codec->hw_device_ctx || !video_codec->hw_frames_ctx->data) {
+		output_settings.video_hw_enabled = false;
+		output_settings_requested.video_hw_type = AV_HWDEVICE_TYPE_NONE;
+		log.warn("could not allocate hw device, will use software decoder. this is going to be slow");
+	}
+
+	if (!ff_ok(avcodec_open2(video_codec, decoder, nullptr))) {
+		log.error("Could not open video decoder");
+		return false;
+	}
+
+	log.verbose("end init_video");
+	return true;
+}
+
+bool AvPlayer::init_audio() {
+	log.verbose("begin init_audio");
+	audio_stream = fmt_ctx->streams[audio_stream_index.value()];
+	file_info.audio.num_channels = audio_stream->codecpar->ch_layout.nb_channels;
+	file_info.audio.sample_rate = audio_stream->codecpar->sample_rate;
+	file_info.audio.codec_name = avcodec_get_name(audio_stream->codecpar->codec_id);
+
+	log.info("AUDIO - num channels: {}, sample rate: {}, codec: {}", file_info.audio.num_channels, file_info.audio.sample_rate, file_info.audio.codec_name);
+
+	// Set output format to stereo
+	const auto audio_decoder = avcodec_find_decoder(audio_stream->codecpar->codec_id);
+	if (!audio_decoder) {
+		log.error("Could not find audio decoder for codec {}", file_info.audio.codec_name);
+		return false;
+	}
+
+	audio_codec = avcodec_alloc_context3(audio_decoder);
+	if (!audio_codec) {
+		log.error("Could not allocate audio codec context for codec {}", file_info.audio.codec_name);
+		return false;
+	}
+
+	if (!ff_ok(avcodec_parameters_to_context(audio_codec, audio_stream->codecpar))) {
+		log.error("could not set audio_codec parameters");
+		return false;
+	}
+
+	audio_codec->pkt_timebase = audio_stream->time_base;
+	audio_codec->request_sample_fmt = output_settings_requested.audio_sample_fmt;
+
+	if (!ff_ok(avcodec_open2(audio_codec, audio_decoder, nullptr))) {
+		log.error("Could not open audio codec for codec {}", file_info.audio.codec_name);
+		return false;
+	}
+
+	output_settings.audio_sample_rate = output_settings_requested.audio_sample_rate > 0 ? output_settings_requested.audio_sample_rate : audio_codec->sample_rate;
+
+	if (!audio_resampler) {
+		// create the resampler
+		swr_alloc_set_opts2(&audio_resampler,
+				&audio_codec->ch_layout,
+				output_settings_requested.audio_sample_fmt,
+				output_settings.audio_sample_rate,
+				&audio_codec->ch_layout, audio_codec->sample_fmt, audio_codec->sample_rate,
+				0, nullptr);
+		if (!ff_ok(swr_init(audio_resampler))) {
+			log.error("Could not initialize audio resampler");
+			return false;
+		}
+	}
+
+	log.verbose("end init_audio");
+	return true;
+}
+
+void AvPlayer::read_next_frame() {
+	AvPacketPtr packet = av_packet_ptr();
+	const auto ret = av_read_frame(fmt_ctx, packet.get());
+	if (ret == AVERROR_EOF) {
+		log.info("eof");
+		is_eof = true;
+		return;
+	}
+	if (!ff_ok(ret)) {
+		log.error("Could not read frame");
+		return;
+	}
+
+	// get the correct codec context for the stream index
+	AVCodecContext *codec = nullptr;
+	if (packet->stream_index == video_stream_index.value()) {
+		codec = video_codec;
+	} else if (audio_stream_index && packet->stream_index == audio_stream_index.value()) {
+		codec = audio_codec;
+	}
+
+	if (!codec) {
+		// we do not care about this stream
+		return;
+	}
+
+	if (!ff_ok(avcodec_send_packet(codec, packet.get()), "avcodec_send_packet")) {
+		return;
+	}
+
+	// AvFramePtr current_frame;
+	auto frame = av_frame_ptr();
+	int receive_counter = 0;
+	int receive_res = 0;
+	while (receive_res == 0) {
+		if (receive_counter > 100) {
+			log.verbose("breaking out of receive loop: {}", receive_counter);
+		}
+		receive_res = avcodec_receive_frame(codec, frame.get());
+		if (receive_res == 0) {
+			frame_received(frame, packet->stream_index);
+		}
+		receive_counter++;
+	}
+}
+
+void AvPlayer::frame_received(const AvFramePtr &frame, const int stream_index) {
+	// find millis of frame
+
+	if (stream_index == video_stream_index.value()) {
+		video_frame_received(frame);
+	} else if (audio_stream_index && stream_index == audio_stream_index.value()) {
+		audio_frame_received(frame);
+	}
+}
+
+void AvPlayer::audio_frame_received(const AvFramePtr &frame) {
+	auto millis = get_frame_millis(frame, audio_codec);
+	audio_frames.push_back({ frame, 0, millis });
+}
+
+void AvPlayer::video_frame_received(const AvFramePtr &frame) {
+	const auto millis = get_frame_millis(frame, video_codec);
+	video_frames.push_back({ frame,
+			millis,
+			SW_BUFFER });
+}
+
+void AvPlayer::emit_video_frame(const AvVideoFrame &frame) const {
+	// log.info("emit_video_frame");
+	//  only emit software frame buffers for now
+	if (!events.video_frame) {
+		log.error("no video frame event listener");
+		return;
+	}
+	if (!frame.frame->hw_frames_ctx) {
+		events.video_frame(frame);
+	} else {
+		auto target = frame;
+		target.frame = av_frame_ptr();
+		if (!ff_ok(av_hwframe_transfer_data(target.frame.get(), frame.frame.get(), 0))) {
+			log.error("Could not transfer_data from hw to sw");
+		}
+		events.video_frame(target);
+	}
+}
+
+void AvPlayer::emit_audio_frame(const AvAudioFrame &frame) const {
+	// log.info("emit_audio_frame");
+	if (!events.audio_frame) {
+		log.error("no audio frame event listener");
+		return;
+	}
+	auto target = frame;
+	target.frame = av_frame_ptr();
+
+	target.frame->format = output_settings.audio_sample_fmt;
+	target.frame->ch_layout = frame.frame->ch_layout;
+	target.frame->sample_rate = output_settings.audio_sample_rate;
+	target.frame->nb_samples = frame.frame->nb_samples;
+	if (!ff_ok(swr_convert_frame(audio_resampler, target.frame.get(), frame.frame.get()), "swr_convert_frame")) {
+		return;
+	}
+
+	int line_size = 0;
+	target.byte_size = av_samples_get_buffer_size(
+			&line_size,
+			target.frame->ch_layout.nb_channels,
+			target.frame->nb_samples,
+			static_cast<AVSampleFormat>(target.frame->format),
+			0);
+
+	events.audio_frame(target);
+}
+
+bool AvPlayer::load(const std::filesystem::path &filepath, const AvPlayerLoadSettings &settings) {
+	reset();
+
+	events = std::move(settings.events);
+	output_settings_requested = settings.output;
+	output_settings = output_settings_requested;
+
+	if (!std::filesystem::exists(filepath)) {
+		log.error("File not found {}", filepath.string());
+		return false;
+	}
+
+	log.verbose("Begin loading of {}", filepath.string());
+
+	AVDictionary *options = nullptr;
+	// av_dict_set(&options, "loglevel", "debug", 0);
+	// av_log_set_level(AV_LOG_DEBUG);
+	if (!ff_ok(avformat_open_input(&fmt_ctx, filepath.string().c_str(), nullptr, &options))) {
+		log.error("avformat_open_input failed");
+		return false;
+	}
+
+	log.verbose("avformat_open_input::ok");
+
+	if (!ff_ok(avformat_find_stream_info(fmt_ctx, nullptr))) {
+		log.error("avformat_find_stream_info failed");
+		return false;
+	}
+
+	log.verbose("avformat_find_stream_info::ok");
+
+	// detect stream indices
+	auto video_index = av_find_best_stream(fmt_ctx, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
+	auto audio_index = av_find_best_stream(fmt_ctx, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
+
+	if (video_index == AVERROR_STREAM_NOT_FOUND) {
+		log.error("Could not find video stream");
+		video_stream_index.reset();
+		return false;
+	}
+
+	video_stream_index = video_index;
+	log.verbose("found video stream at index: {}", video_stream_index.value());
+
+	if (audio_index == AVERROR_STREAM_NOT_FOUND) {
+		log.info("No audio stream found");
+		audio_stream_index.reset();
+	} else {
+		audio_stream_index = audio_index;
+		log.verbose("found audio stream at index: {}", audio_stream_index.value());
+	}
+
+	///////
+	video_stream = fmt_ctx->streams[video_stream_index.value()];
+
+	if (!init_video()) {
+		log.error("Could not initialize video stream");
+		return false;
+	}
+
+	if (audio_stream_index) {
+		if (!init_audio()) {
+			log.error("Could not initialize audio stream");
+			return false;
+		}
+	}
+
+	filepath_loaded = filepath;
+	ready_for_playback = true;
+
+	log.info("file loaded {}", filepath.string());
+	return true;
+}
+
+void AvPlayer::process() {
+	if (!playing)
+		return;
+
+	if (!ready_for_playback) {
+		return;
+	}
+
+	if (video_frames.size() || audio_frames.size()) {
+		// handle frames in buffer
+		const auto now = std::chrono::high_resolution_clock::now();
+		if (!has_started()) {
+			start_time = now;
+		}
+
+		// first handle audio
+		while (!audio_frames.empty()) {
+			if (start_time.value() + audio_frames.front().millis <= now) {
+				emit_audio_frame(audio_frames.front());
+				audio_frames.pop_front();
+			} else {
+				break;
+			}
+		}
+
+		// then video  with frame dropping
+
+		std::optional<AvVideoFrame> result;
+		int frame_drops = -1;
+		while (!video_frames.empty()) {
+			if (start_time.value() + video_frames.front().millis <= now) {
+				result = video_frames.front();
+				video_frames.pop_front();
+				frame_drops++;
+			} else {
+				break;
+			}
+		}
+		if (frame_drops > 0) {
+			log.warn("dropped {} video frames", frame_drops);
+		}
+		if (result) {
+			emit_video_frame(result.value());
+		}
+	}
+
+	// now read new frames
+	while (!is_eof && buffer_size() < output_settings.frame_buffer_size) {
+		read_next_frame();
+	}
+}
