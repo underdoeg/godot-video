@@ -79,10 +79,22 @@ struct AvBaseFrame {
 struct AvVideoFrame : AvBaseFrame {
 	AvVideoFrameType type;
 	AVColorSpace color_space = AVCOL_SPC_UNSPECIFIED;
+	AvVideoFrame copy() const {
+		AvVideoFrame copy = *this;
+		copy.frame = av_frame_ptr();
+		av_frame_copy(copy.frame.get(), frame.get());
+		return copy;
+	}
 };
 
 struct AvAudioFrame : AvBaseFrame {
 	int byte_size = 0;
+	AvAudioFrame copy() const {
+		AvAudioFrame copy = *this;
+		copy.frame = av_frame_ptr();
+		av_frame_copy(copy.frame.get(), frame.get());
+		return copy;
+	}
 };
 
 struct AvWrapperOutputSettings {

@@ -30,6 +30,8 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 	std::atomic_bool thread_keep_running;
 	std::mutex audio_mutex;
 	std::mutex video_mutex;
+	std::optional<AvVideoFrame> video_frame_thread;
+	std::deque<AvAudioFrame> audio_frames_thread;
 
 	godot::PackedFloat32Array audio_buffer;
 
@@ -39,6 +41,7 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 
 public:
 	GAVPlayback();
+	~GAVPlayback() override;
 
 	Callbacks callbacks;
 

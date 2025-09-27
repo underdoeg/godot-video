@@ -647,6 +647,7 @@ void AvPlayer::process() {
 	if (waiting_for_init && num_players < max_players) {
 		init();
 	}
+
 	if (!playing)
 		return;
 

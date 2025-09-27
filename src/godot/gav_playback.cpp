@@ -23,10 +23,19 @@ GAVPlayback::GAVPlayback() {
 		log.warn("threaded video playback does not work yet");
 	}
 }
+GAVPlayback::~GAVPlayback() {
+	if (thread.joinable()) {
+		thread.join();
+	}
+}
 
 bool GAVPlayback::load(const String &p_path) {
 	if (Engine::get_singleton()->is_editor_hint()) {
 		return false;
+	}
+
+	if (thread.joinable()) {
+		thread.join();
 	}
 
 	auto path_global = ProjectSettings::get_singleton()->globalize_path(p_path);
@@ -51,11 +60,18 @@ bool GAVPlayback::load(const String &p_path) {
 		std::mutex mtx;
 		std::condition_variable cv;
 		std::optional<AvFileInfo> info_from_thread;
-		settings.events.video_frame = [&](const auto &frame) {
-			log.verbose("Video frame loaded");
+		settings.events.video_frame = [&](const AvVideoFrame &frame) {
+			// log.info("Video frame loaded");
+			auto copy = frame.copy();
+			std::scoped_lock lock(video_mutex);
+			video_frame_thread = copy;
 		};
 
-		settings.events.audio_frame = [&](const auto &frame) {
+		settings.events.audio_frame = [&](const AvAudioFrame &frame) {
+			auto copy = frame.copy();
+			std::scoped_lock lock(audio_mutex);
+			audio_frames_thread.push_back(copy);
+			// log.info("Audio frame loaded");
 		};
 
 		settings.events.file_info = [&](const auto &info) {
@@ -125,6 +141,13 @@ void GAVPlayback::on_audio_frame(const AvAudioFrame &frame) {
 void GAVPlayback::_stop() {
 	if (!av)
 		return;
+
+	if (threaded) {
+		thread_keep_running = false;
+		if (thread.joinable()) {
+			thread.join();
+		}
+	}
 	av->stop();
 }
 void GAVPlayback::_play() {
@@ -178,7 +201,24 @@ int32_t GAVPlayback::_get_mix_rate() const {
 }
 
 void GAVPlayback::_update(double p_delta) {
-	if (!av)
-		return;
-	av->process();
+	if (threaded) {
+		std::optional<AvVideoFrame> frame;
+		{
+			std::scoped_lock lock(video_mutex);
+			if (video_frame_thread) {
+				frame = video_frame_thread.value();
+				video_frame_thread.reset();
+			}
+			if (frame) {
+				on_video_frame(frame.value());
+			}
+		}
+		{
+			// TODO: audio
+		}
+	} else {
+		if (!av)
+			return;
+		av->process();
+	}
 }
