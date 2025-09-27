@@ -278,6 +278,8 @@ add_library(${LIBNAME} SHARED
         src/av_wrapper/av_player.h
         src/av_wrapper/av_helpers.cpp
         src/av_wrapper/av_helpers.h
+        src/godot/gav_texture.cpp
+        src/godot/gav_texture.h
 )
 
 #target_sources(${LIBNAME}

@@ -45,15 +45,28 @@ void AvPlayer::reset() {
 
 	log.verbose("reset end");
 }
-
-bool AvPlayer::init_video() {
-	// file_info.video.codec = video_stream->codecpar->codec_type
-	log.verbose("begin init_video");
+void AvPlayer::fill_file_info() {
 	file_info.video.width = video_stream->codecpar->width;
 	file_info.video.height = video_stream->codecpar->height;
 	file_info.video.frame_rate = av_q2d(video_stream->codecpar->framerate);
 	file_info.video.codec_name = avcodec_get_name(video_stream->codecpar->codec_id);
-	log.info("VIDEO - size: {}x{}, frame_rate: {}, codec: {}", file_info.video.width, file_info.video.height, file_info.video.frame_rate, file_info.video.codec_name);
+	log.info("[Video] size: {}x{}, frame_rate: {}, codec: {}", file_info.video.width, file_info.video.height, file_info.video.frame_rate, file_info.video.codec_name);
+
+	if (audio_stream_index) {
+		file_info.audio.num_channels = audio_stream->codecpar->ch_layout.nb_channels;
+		file_info.audio.sample_rate = audio_stream->codecpar->sample_rate;
+		file_info.audio.codec_name = avcodec_get_name(audio_stream->codecpar->codec_id);
+		log.info("[Audio] num channels: {}, sample rate: {}, codec: {}, sample format: {}",
+				file_info.audio.num_channels, file_info.audio.sample_rate, file_info.audio.codec_name, audio_stream->codecpar->format);
+	}
+	if (events.file_info) {
+		events.file_info(file_info);
+	}
+}
+
+bool AvPlayer::init_video() {
+	// file_info.video.codec = video_stream->codecpar->codec_type
+	log.verbose("begin init_video");
 
 	// setup the decoder
 	const AVCodec *decoder = avcodec_find_decoder(video_stream->codecpar->codec_id);
@@ -191,14 +204,38 @@ bool AvPlayer::init_video() {
 	return true;
 }
 
+void AvPlayer::video_frame_received(const AvFramePtr &frame) {
+	const auto millis = av_get_frame_millis(frame, video_codec);
+	video_frames.push_back({ frame,
+			millis,
+			frame->hw_frames_ctx ? HW_BUFFER : SW_BUFFER,
+			video_codec->colorspace });
+}
+
+void AvPlayer::emit_video_frame(const AvVideoFrame &frame) const {
+	// log.info("emit_video_frame");
+	//  only emit software frame buffers for now
+	if (!events.video_frame) {
+		log.error("no video frame event listener");
+		return;
+
+	}
+
+	if (frame.type == HW_BUFFER) {
+		auto target = frame;
+		target.frame = av_frame_ptr();
+		if (!ff_ok(av_hwframe_transfer_data(target.frame.get(), frame.frame.get(), 0))) {
+			log.error("Could not transfer_data from hw to sw");
+		}
+		target.type = SW_BUFFER;
+		events.video_frame(target);
+	} else {
+		events.video_frame(frame);
+	}
+}
+
 bool AvPlayer::init_audio() {
 	log.verbose("begin init_audio");
-	audio_stream = fmt_ctx->streams[audio_stream_index.value()];
-	file_info.audio.num_channels = audio_stream->codecpar->ch_layout.nb_channels;
-	file_info.audio.sample_rate = audio_stream->codecpar->sample_rate;
-	file_info.audio.codec_name = avcodec_get_name(audio_stream->codecpar->codec_id);
-
-	log.info("AUDIO - num channels: {}, sample rate: {}, codec: {}", file_info.audio.num_channels, file_info.audio.sample_rate, file_info.audio.codec_name);
 
 	// Set output format to stereo
 	const auto audio_decoder = avcodec_find_decoder(audio_stream->codecpar->codec_id);
@@ -232,7 +269,7 @@ bool AvPlayer::init_audio() {
 		// create the resampler
 		swr_alloc_set_opts2(&audio_resampler,
 				&audio_codec->ch_layout,
-				output_settings_requested.audio_sample_fmt,
+				output_settings.audio_sample_fmt,
 				output_settings.audio_sample_rate,
 				&audio_codec->ch_layout, audio_codec->sample_fmt, audio_codec->sample_rate,
 				0, nullptr);
@@ -246,8 +283,39 @@ bool AvPlayer::init_audio() {
 	return true;
 }
 
-void AvPlayer::read_next_frame() {
-	AvPacketPtr packet = av_packet_ptr();
+void AvPlayer::emit_audio_frame(const AvAudioFrame &frame) const {
+	// log.info("emit_audio_frame");
+	if (!events.audio_frame) {
+		log.error("no audio frame event listener");
+		return;
+	}
+	// log.info("format: ")
+	auto target = frame;
+	target.frame = av_frame_ptr();
+
+	target.frame->format = output_settings.audio_sample_fmt;
+	target.frame->ch_layout = frame.frame->ch_layout;
+	target.frame->sample_rate = output_settings.audio_sample_rate;
+	target.frame->nb_samples = frame.frame->nb_samples;
+
+	if (!ff_ok(swr_convert_frame(audio_resampler, target.frame.get(), frame.frame.get()), "swr_convert_frame")) {
+		return;
+	}
+
+	int line_size = 0;
+	target.byte_size = av_samples_get_buffer_size(
+			&line_size,
+			target.frame->ch_layout.nb_channels,
+			target.frame->nb_samples,
+			static_cast<AVSampleFormat>(target.frame->format),
+			0);
+
+	events.audio_frame(target);
+}
+
+void AvPlayer::read_next_frames() {
+	av_packet_unref(packet.get());
+
 	const auto ret = av_read_frame(fmt_ctx, packet.get());
 	if (ret == AVERROR_EOF) {
 		log.info("eof");
@@ -277,10 +345,10 @@ void AvPlayer::read_next_frame() {
 	}
 
 	// AvFramePtr current_frame;
-	auto frame = av_frame_ptr();
 	int receive_counter = 0;
 	int receive_res = 0;
 	while (receive_res == 0) {
+		const auto frame = av_frame_ptr();
 		if (receive_counter > 100) {
 			log.verbose("breaking out of receive loop: {}", receive_counter);
 		}
@@ -303,82 +371,37 @@ void AvPlayer::frame_received(const AvFramePtr &frame, const int stream_index) {
 }
 
 void AvPlayer::audio_frame_received(const AvFramePtr &frame) {
-	auto millis = get_frame_millis(frame, audio_codec);
-	audio_frames.push_back({ frame, 0, millis });
+	auto millis = av_get_frame_millis(frame, audio_codec);
+	// log.info("audio_frame_received - num channels: {}, sample rate: {}, sample format: {}",
+	// 		frame->ch_layout.nb_channels, frame->sample_rate, static_cast<int>(frame->format));
+
+	audio_frames.push_back({ frame, millis, 0 });
 }
 
-void AvPlayer::video_frame_received(const AvFramePtr &frame) {
-	const auto millis = get_frame_millis(frame, video_codec);
-	video_frames.push_back({ frame,
-			millis,
-			SW_BUFFER });
+bool AvPlayer::frame_needs_emit(const AvBaseFrame &f) const {
+	if (!has_started())
+		return false;
+	return start_time.value() + f.millis <= Clock::now();
 }
 
-void AvPlayer::emit_video_frame(const AvVideoFrame &frame) const {
-	// log.info("emit_video_frame");
-	//  only emit software frame buffers for now
-	if (!events.video_frame) {
-		log.error("no video frame event listener");
-		return;
-	}
-	if (!frame.frame->hw_frames_ctx) {
-		events.video_frame(frame);
-	} else {
-		auto target = frame;
-		target.frame = av_frame_ptr();
-		if (!ff_ok(av_hwframe_transfer_data(target.frame.get(), frame.frame.get(), 0))) {
-			log.error("Could not transfer_data from hw to sw");
-		}
-		events.video_frame(target);
-	}
-}
-
-void AvPlayer::emit_audio_frame(const AvAudioFrame &frame) const {
-	// log.info("emit_audio_frame");
-	if (!events.audio_frame) {
-		log.error("no audio frame event listener");
-		return;
-	}
-	auto target = frame;
-	target.frame = av_frame_ptr();
-
-	target.frame->format = output_settings.audio_sample_fmt;
-	target.frame->ch_layout = frame.frame->ch_layout;
-	target.frame->sample_rate = output_settings.audio_sample_rate;
-	target.frame->nb_samples = frame.frame->nb_samples;
-	if (!ff_ok(swr_convert_frame(audio_resampler, target.frame.get(), frame.frame.get()), "swr_convert_frame")) {
-		return;
-	}
-
-	int line_size = 0;
-	target.byte_size = av_samples_get_buffer_size(
-			&line_size,
-			target.frame->ch_layout.nb_channels,
-			target.frame->nb_samples,
-			static_cast<AVSampleFormat>(target.frame->format),
-			0);
-
-	events.audio_frame(target);
-}
-
-bool AvPlayer::load(const std::filesystem::path &filepath, const AvPlayerLoadSettings &settings) {
+bool AvPlayer::load(const AvPlayerLoadSettings &settings) {
 	reset();
 
 	events = std::move(settings.events);
 	output_settings_requested = settings.output;
 	output_settings = output_settings_requested;
 
-	if (!std::filesystem::exists(filepath)) {
-		log.error("File not found {}", filepath.string());
+	if (!std::filesystem::exists(settings.file_path)) {
+		log.error("File not found {}", settings.file_path);
 		return false;
 	}
 
-	log.verbose("Begin loading of {}", filepath.string());
+	log.verbose("Begin loading of {}", settings.file_path);
 
 	AVDictionary *options = nullptr;
 	// av_dict_set(&options, "loglevel", "debug", 0);
 	// av_log_set_level(AV_LOG_DEBUG);
-	if (!ff_ok(avformat_open_input(&fmt_ctx, filepath.string().c_str(), nullptr, &options))) {
+	if (!ff_ok(avformat_open_input(&fmt_ctx, settings.file_path.c_str(), nullptr, &options))) {
 		log.error("avformat_open_input failed");
 		return false;
 	}
@@ -405,16 +428,21 @@ bool AvPlayer::load(const std::filesystem::path &filepath, const AvPlayerLoadSet
 	video_stream_index = video_index;
 	log.verbose("found video stream at index: {}", video_stream_index.value());
 
+	video_stream = fmt_ctx->streams[video_stream_index.value()];
+
 	if (audio_index == AVERROR_STREAM_NOT_FOUND) {
 		log.info("No audio stream found");
 		audio_stream_index.reset();
 	} else {
 		audio_stream_index = audio_index;
+		audio_stream = fmt_ctx->streams[audio_stream_index.value()];
 		log.verbose("found audio stream at index: {}", audio_stream_index.value());
 	}
 
+	//
+	fill_file_info();
+
 	///////
-	video_stream = fmt_ctx->streams[video_stream_index.value()];
 
 	if (!init_video()) {
 		log.error("Could not initialize video stream");
@@ -428,31 +456,54 @@ bool AvPlayer::load(const std::filesystem::path &filepath, const AvPlayerLoadSet
 		}
 	}
 
-	filepath_loaded = filepath;
+	filepath_loaded = settings.file_path;
 	ready_for_playback = true;
 
-	log.info("file loaded {}", filepath.string());
+	log.info("file loaded {}", settings.file_path);
 	return true;
 }
 
-void AvPlayer::process() {
-	if (!playing)
-		return;
+void AvPlayer::fill_buffers() {
+	// read new frames
+	// if the video has not yet started, the process is simple, fill up the  buffer
+	if (!has_started()) {
+		while (!is_eof && buffer_size() < output_settings.frame_buffer_size) {
+			read_next_frames();
+		}
+	} else {
+		// also check if the newest frame should be displayed, if so it is a buffer underrun and handle it right away
+		while (!is_eof && buffer_size() < output_settings.frame_buffer_size) {
+			read_next_frames();
+			// check if a frame needs showing, abort if true
+			for (const auto &f : audio_frames) {
+				if (frame_needs_emit(f)) {
+					break;
+				}
+			}
+			for (const auto &f : video_frames) {
+				if (frame_needs_emit(f)) {
+					break;
+				}
+			}
+		}
 
-	if (!ready_for_playback) {
-		return;
+		const auto buff_size = buffer_size();
+		if (buff_size < output_settings.frame_buffer_size) {
+			log.warn("buffer underrun: {} / {}", buff_size, output_settings.frame_buffer_size);
+		}
 	}
+}
 
+void AvPlayer::emit_frames() {
+	// only start the clock if we have some frames
 	if (video_frames.size() || audio_frames.size()) {
-		// handle frames in buffer
-		const auto now = std::chrono::high_resolution_clock::now();
 		if (!has_started()) {
-			start_time = now;
+			start_time = Clock::now();
 		}
 
 		// first handle audio
 		while (!audio_frames.empty()) {
-			if (start_time.value() + audio_frames.front().millis <= now) {
+			if (frame_needs_emit(audio_frames.front())) {
 				emit_audio_frame(audio_frames.front());
 				audio_frames.pop_front();
 			} else {
@@ -460,12 +511,11 @@ void AvPlayer::process() {
 			}
 		}
 
-		// then video  with frame dropping
-
+		// then video with frame dropping
 		std::optional<AvVideoFrame> result;
 		int frame_drops = -1;
 		while (!video_frames.empty()) {
-			if (start_time.value() + video_frames.front().millis <= now) {
+			if (frame_needs_emit(video_frames.front())) {
 				result = video_frames.front();
 				video_frames.pop_front();
 				frame_drops++;
@@ -480,9 +530,15 @@ void AvPlayer::process() {
 			emit_video_frame(result.value());
 		}
 	}
+}
 
-	// now read new frames
-	while (!is_eof && buffer_size() < output_settings.frame_buffer_size) {
-		read_next_frame();
+void AvPlayer::process() {
+	if (!playing)
+		return;
+
+	if (!ready_for_playback) {
+		return;
 	}
+	emit_frames();
+	fill_buffers();
 }

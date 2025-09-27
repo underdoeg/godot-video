@@ -18,19 +18,19 @@ extern "C" {
 }
 
 struct AvVideoInfo {
-	AVPixelFormat pixel_format;
-	int width;
-	int height;
-	double frame_rate;
-	std::string codec_name;
+	AVPixelFormat pixel_format = AV_PIX_FMT_NONE;
+	int width = 0;
+	int height = 0;
+	double frame_rate = 0.0;
+	std::string codec_name = "";
 	// std::string codec;
 };
 
 struct AvAudioInfo {
-	AVSampleFormat sample_format;
-	int num_channels;
-	int sample_rate;
-	std::string codec_name;
+	AVSampleFormat sample_format = AV_SAMPLE_FMT_NONE;
+	int num_channels = 0;
+	int sample_rate = 0;
+	std::string codec_name = "";
 };
 
 struct AvFileInfo {
@@ -67,19 +67,22 @@ struct AvWrapperLog {
 
 enum AvVideoFrameType {
 	VK_BUFFER,
+	HW_BUFFER,
 	SW_BUFFER,
 };
 
-struct AvVideoFrame {
+struct AvBaseFrame {
 	AvFramePtr frame;
 	std::chrono::milliseconds millis;
-	AvVideoFrameType type;
 };
 
-struct AvAudioFrame {
-	AvFramePtr frame;
+struct AvVideoFrame : AvBaseFrame {
+	AvVideoFrameType type;
+	AVColorSpace color_space = AVCOL_SPC_UNSPECIFIED;
+};
+
+struct AvAudioFrame : AvBaseFrame {
 	int byte_size = 0;
-	std::chrono::milliseconds millis;
 };
 
 struct AvWrapperOutputSettings {
@@ -93,9 +96,11 @@ struct AvWrapperOutputSettings {
 struct AvPlayerEvents {
 	std::function<void(const AvVideoFrame &)> video_frame;
 	std::function<void(const AvAudioFrame &)> audio_frame;
+	std::function<void(const AvFileInfo &)> file_info;
 };
 
 struct AvPlayerLoadSettings {
+	std::string file_path;
 	AvWrapperOutputSettings output;
 	AvPlayerEvents events;
 };
@@ -127,42 +132,22 @@ class AvPlayer {
 
 	std::deque<AvVideoFrame> video_frames;
 	std::deque<AvAudioFrame> audio_frames;
+	AvPacketPtr packet = av_packet_ptr();
 
 	void reset();
+	void fill_file_info();
 	bool init_video();
 	bool init_audio();
 
-	void read_next_frame();
+	void read_next_frames();
 	void frame_received(const AvFramePtr &frame, int stream_index);
 	void audio_frame_received(const AvFramePtr &frame);
 	void video_frame_received(const AvFramePtr &frame);
 
-	// template <typename FrameType>
-	// void handle_frames(std::deque<FrameType> &frames, std::function<void(const FrameType& callback)>) {
-	// 	const auto now = std::chrono::high_resolution_clock::now();
-	// 	if (!has_started()) {
-	// 		start_time = now;
-	// 	}
-	// 	std::optional<FrameType> result;
-	// 	int frame_drops = -1;
-	// 	while (!frames.empty()) {
-	// 		if (start_time.value() + frames.front().millis <= now) {
-	// 			result = frames.front();
-	// 			frames.pop_front();
-	// 			frame_drops++;
-	// 		} else {
-	// 			break;
-	// 		}
-	// 	}
-	// 	if (frame_drops > 0) {
-	// 		log.warn("dropped {} frames", frame_drops);
-	// 	}
-	// 	return result;
-	// }
-
+	bool frame_needs_emit(const AvBaseFrame &f) const;
 	void emit_video_frame(const AvVideoFrame &frame) const;
-
 	void emit_audio_frame(const AvAudioFrame &frame) const;
+	void emit_frames();
 
 	std::atomic_bool playing = false;
 	std::atomic_bool paused = false;
@@ -171,11 +156,11 @@ class AvPlayer {
 	std::atomic_bool ready_for_playback = false;
 	std::optional<Clock::time_point> start_time = std::nullopt;
 
-	bool has_started() const {
+	[[nodiscard]] bool has_started() const {
 		return start_time.has_value();
 	}
 
-	size_t buffer_size() const {
+	[[nodiscard]] size_t buffer_size() const {
 		if (video_stream_index && audio_stream_index) {
 			return std::min(video_frames.size(), audio_frames.size());
 		}
@@ -192,14 +177,16 @@ public:
 		playing = true;
 		paused = false;
 	}
-	bool is_playing() const {
+	[[nodiscard]] bool is_playing() const {
 		return playing && !paused;
 	}
-	bool is_paused() const {
+	[[nodiscard]] bool is_paused() const {
 		return playing && paused;
 	};
 
-	bool load(const std::filesystem::path &filepath, const AvPlayerLoadSettings &settings = {});
+	bool load(const AvPlayerLoadSettings &settings = {});
+
+	void fill_buffers();
 
 	void process();
 };

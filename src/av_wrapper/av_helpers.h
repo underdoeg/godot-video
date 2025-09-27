@@ -18,4 +18,13 @@ AvFramePtr av_frame_ptr();
 using AvPacketPtr = std::shared_ptr<AVPacket>;
 AvPacketPtr av_packet_ptr();
 
-std::chrono::milliseconds get_frame_millis(const AvFramePtr &frame, const AVCodecContext *codec);
+std::chrono::milliseconds av_get_frame_millis(const AvFramePtr &frame, const AVCodecContext *codec);
+
+struct AvPlaneInfo {
+	int width, height, depth, line_size;
+	size_t byte_size;
+};
+
+using AvPlaneInfos = std::vector<AvPlaneInfo>;
+
+AvPlaneInfos av_get_plane_infos(const AVPixelFormat &pixel_format, const int width, const int height);

@@ -1,6 +1,7 @@
 #pragma once
 #include "av_wrapper/av_player.h"
 #include "gav_log.h"
+#include "gav_texture.h"
 
 #include <functional>
 #include <godot_cpp/classes/texture2d.hpp>
@@ -20,12 +21,12 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 
 	GAVLog log = GAVLog("GAVPlayback");
 	std::shared_ptr<AvPlayer> av;
+	std::shared_ptr<GAVTexture> texture;;
 
 	godot::PackedFloat32Array audio_buffer;
 
-	void on_video_frame(const AvVideoFrame& frame);
+	void on_video_frame(const AvVideoFrame& frame) const;
 	void on_audio_frame(const AvAudioFrame& frame);
-
 
 public:
 	GAVPlayback();
