@@ -1,6 +1,7 @@
 #pragma once
 #include "av_wrapper/av_player.h"
 #include "gav_log.h"
+#include "gav_settings.h"
 #include "gav_texture.h"
 
 #include <functional>
@@ -8,6 +9,7 @@
 #include <godot_cpp/classes/video_stream_playback.hpp>
 #include <godot_cpp/variant/string.hpp>
 #include <memory>
+#include <thread>
 
 class GAVPlayback : public godot::VideoStreamPlayback {
 	struct Callbacks {
@@ -21,12 +23,19 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 
 	GAVLog log = GAVLog("GAVPlayback");
 	std::shared_ptr<AvPlayer> av;
-	std::shared_ptr<GAVTexture> texture;;
+	std::shared_ptr<GAVTexture> texture;
+
+	bool threaded = gav_settings::use_threads();
+	std::thread thread;
+	std::atomic_bool thread_keep_running;
+	std::mutex audio_mutex;
+	std::mutex video_mutex;
 
 	godot::PackedFloat32Array audio_buffer;
 
-	void on_video_frame(const AvVideoFrame& frame) const;
-	void on_audio_frame(const AvAudioFrame& frame);
+	void on_video_frame(const AvVideoFrame &frame) const;
+	void on_audio_frame(const AvAudioFrame &frame);
+	void set_file_info(const AvFileInfo& info);
 
 public:
 	GAVPlayback();

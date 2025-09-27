@@ -2,6 +2,9 @@
 #include "gav_settings.h"
 #include "godot_cpp/classes/rendering_server.hpp"
 
+#include <oneapi/tbb/info.h>
+
+#include <condition_variable>
 #include <filesystem>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/file_access.hpp>
@@ -41,24 +44,67 @@ bool GAVPlayback::load(const String &p_path) {
 	AvPlayerLoadSettings settings;
 	settings.file_path = path_global.ascii().ptr();
 
-	settings.output.frame_buffer_size = gav_settings::frame_buffer_size();
+	// settings.output.frame_buffer_size = gav_settings::frame_buffer_size();
 
-	settings.events.video_frame = std::bind(&GAVPlayback::on_video_frame, this, std::placeholders::_1);
-	settings.events.audio_frame = std::bind(&GAVPlayback::on_audio_frame, this, std::placeholders::_1);
-	settings.events.file_info = [&](const auto &info) {
-		if (!texture) {
-			texture = std::make_shared<GAVTexture>(RenderingServer::get_singleton()->get_rendering_device());
+	bool result = false;
+	if (threaded) {
+		std::mutex mtx;
+		std::condition_variable cv;
+		std::optional<AvFileInfo> info_from_thread;
+		settings.events.video_frame = [&](const auto &frame) {
+			log.verbose("Video frame loaded");
+		};
+
+		settings.events.audio_frame = [&](const auto &frame) {
+		};
+
+		settings.events.file_info = [&](const auto &info) {
+			std::unique_lock<std::mutex> lck(mtx);
+			info_from_thread = info;
+			cv.notify_all();
+		};
+
+		thread_keep_running = true;
+		thread = std::thread([&]() {
+			auto res = av->load(settings);
+			if (!res) {
+				cv.notify_all();
+			}
+			while (thread_keep_running) {
+				auto sleep_until = std::chrono::high_resolution_clock::now() + std::chrono::milliseconds(1000 / 120);
+				av->process();
+				std::this_thread::sleep_until(sleep_until);
+			}
+		});
+
+		std::unique_lock lck(mtx);
+		cv.wait(lck);
+		if (info_from_thread) {
+			set_file_info(info_from_thread.value());
+			result = true;
+		} else {
+			result = false;
 		}
-		texture->log.set_level(log.get_level());
-		texture->log.set_name(log.get_name() + String(" - texture"));
-		texture->setup(info.video);
-	};
+	} else {
+		settings.events.video_frame = std::bind(&GAVPlayback::on_video_frame, this, std::placeholders::_1);
+		settings.events.audio_frame = std::bind(&GAVPlayback::on_audio_frame, this, std::placeholders::_1);
+		settings.events.file_info = std::bind(&GAVPlayback::set_file_info, this, std::placeholders::_1);
+		result = av->load(settings);
+	}
 
-	const auto res = av->load(settings);
-	if (!res) {
+	if (!result) {
 		log.error("Failed to load {}", path_global.ptr());
 	}
-	return res;
+	return result;
+}
+
+void GAVPlayback::set_file_info(const AvFileInfo &info) {
+	if (!texture) {
+		texture = std::make_shared<GAVTexture>(RenderingServer::get_singleton()->get_rendering_device());
+	}
+	texture->log.set_level(log.get_level());
+	texture->log.set_name(log.get_name() + String(" - texture"));
+	texture->setup(info.video);
 }
 
 void GAVPlayback::on_video_frame(const AvVideoFrame &frame) const {
@@ -79,7 +125,7 @@ void GAVPlayback::on_audio_frame(const AvAudioFrame &frame) {
 void GAVPlayback::_stop() {
 	if (!av)
 		return;
-	// av->stop();
+	av->stop();
 }
 void GAVPlayback::_play() {
 	if (!av)

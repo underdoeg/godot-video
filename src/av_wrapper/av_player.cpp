@@ -7,12 +7,44 @@
 #include "av_helpers.h"
 #include "godot_cpp/variant/utility_functions.hpp"
 
+#include <map>
+#include <mutex>
+
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavutil/channel_layout.h>
 #include <libavutil/hwcontext_vaapi.h>
 #include <libavutil/pixdesc.h>
+}
+
+constexpr int max_players = 24;
+static std::atomic_int num_players = 0;
+
+constexpr bool reusing_enabled = false;
+static std::mutex cached_hw_devices_mtx;
+static std::map<AVHWDeviceType, std::deque<AVBufferRef *>> cached_hw_devices;
+
+AVBufferRef *get_used_hw_device(const AVHWDeviceType type) {
+	if (!reusing_enabled)
+		return nullptr;
+	// printf("get device from cache: %s\n", av_hwdevice_get_type_name(type));
+	std::scoped_lock<std::mutex> lock(cached_hw_devices_mtx);
+	if (cached_hw_devices[type].empty()) {
+		return nullptr;
+	}
+	auto ret = cached_hw_devices[type].front();
+	cached_hw_devices[type].pop_front();
+	return ret;
+}
+
+void reuse_hw_device(const AVHWDeviceType type, AVBufferRef *hw_device) {
+	if (!reusing_enabled)
+		return;
+
+	// printf("add device to cache: %s\n", av_hwdevice_get_type_name(type));
+	std::scoped_lock<std::mutex> lock(cached_hw_devices_mtx);
+	cached_hw_devices[type].push_back(hw_device);
 }
 
 bool AvPlayer::ff_ok(int result, const std::string &prepend) const {
@@ -27,8 +59,48 @@ bool AvPlayer::ff_ok(int result, const std::string &prepend) const {
 	}
 	return true;
 }
+
+AvPlayer::~AvPlayer() {
+	reset();
+}
+
 void AvPlayer::reset() {
 	log.verbose("reset begin");
+
+	audio_frames.clear();
+	video_frames.clear();
+
+	// if (video_hw_frames_ref) {
+	// 	av_buffer_unref(&video_hw_frames_ref);
+	// 	video_hw_frames_ref = nullptr;
+	// }
+
+	AVBufferRef *hw_device = nullptr;
+	if (video_codec) {
+		if (reusing_enabled && video_codec->hw_device_ctx) {
+			// reuse hw device types
+			hw_device = video_codec->hw_device_ctx;
+			video_codec->hw_device_ctx = nullptr;
+		}
+		avcodec_free_context(&video_codec);
+	}
+
+	if (audio_codec) {
+		avcodec_free_context(&audio_codec);
+	}
+
+	if (fmt_ctx) {
+		avformat_close_input(&fmt_ctx);
+		--num_players;
+	}
+	video_codec = audio_codec = nullptr;
+	fmt_ctx = nullptr;
+	//
+	// if (hw_device) {
+	// 	reuse_hw_device(output_settings.video_hw_type, hw_device);
+	// 	// log.info("added {}", av_hwdevice_get_type_name(output_settings.video_hw_type));
+	// }
+
 	output_settings = {};
 	filepath_loaded.reset();
 	video_stream_index.reset();
@@ -37,11 +109,6 @@ void AvPlayer::reset() {
 	audio_stream = nullptr;
 	file_info = {};
 	events = {};
-
-	if (video_hw_frames_ref) {
-		av_buffer_unref(&video_hw_frames_ref);
-		video_hw_frames_ref = nullptr;
-	}
 
 	log.verbose("reset end");
 }
@@ -62,6 +129,105 @@ void AvPlayer::fill_file_info() {
 	if (events.file_info) {
 		events.file_info(file_info);
 	}
+}
+
+bool AvPlayer::load(const AvPlayerLoadSettings &settings) {
+	reset();
+
+	events = std::move(settings.events);
+	output_settings_requested = settings.output;
+	output_settings = output_settings_requested;
+
+	if (!std::filesystem::exists(settings.file_path)) {
+		log.error("File not found {}", settings.file_path);
+		return false;
+	}
+
+	log.verbose("Begin loading of {}", settings.file_path);
+
+	AVDictionary *options = nullptr;
+	// av_dict_set(&options, "loglevel", "debug", 0);
+	// av_log_set_level(AV_LOG_DEBUG);
+	if (!ff_ok(avformat_open_input(&fmt_ctx, settings.file_path.c_str(), nullptr, &options))) {
+		log.error("avformat_open_input failed");
+		return false;
+	}
+
+	log.verbose("avformat_open_input::ok");
+
+	if (!ff_ok(avformat_find_stream_info(fmt_ctx, nullptr))) {
+		log.error("avformat_find_stream_info failed");
+		return false;
+	}
+
+	log.verbose("avformat_find_stream_info::ok");
+
+	// detect stream indices
+	auto video_index = av_find_best_stream(fmt_ctx, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
+	auto audio_index = av_find_best_stream(fmt_ctx, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
+
+	if (video_index == AVERROR_STREAM_NOT_FOUND) {
+		log.error("Could not find video stream");
+		video_stream_index.reset();
+		return false;
+	}
+
+	video_stream_index = video_index;
+	log.verbose("found video stream at index: {}", video_stream_index.value());
+
+	video_stream = fmt_ctx->streams[video_stream_index.value()];
+
+	if (audio_index == AVERROR_STREAM_NOT_FOUND) {
+		log.info("No audio stream found");
+		audio_stream_index.reset();
+	} else {
+		audio_stream_index = audio_index;
+		audio_stream = fmt_ctx->streams[audio_stream_index.value()];
+		log.verbose("found audio stream at index: {}", audio_stream_index.value());
+	}
+
+	//
+	fill_file_info();
+
+	///////
+
+	filepath_loaded = settings.file_path;
+	log.info("file loaded {}", settings.file_path);
+
+	if (num_players < max_players) {
+		return init();
+	}
+
+	log.info("too many open players {}, waiting with init untile they are closed", static_cast<int>(num_players));
+
+	waiting_for_init = true;
+
+	return true;
+}
+
+bool AvPlayer::init() {
+	waiting_for_init = false;
+	++num_players;
+
+	log.verbose("number of players: {}", static_cast<int>(num_players));
+
+	log.verbose("init begin");
+
+	if (!init_video()) {
+		log.error("Could not initialize video stream");
+		return false;
+	}
+
+	if (audio_stream_index) {
+		if (!init_audio()) {
+			log.error("Could not initialize audio stream");
+			return false;
+		}
+	}
+
+	ready_for_playback = true;
+	log.verbose("init complete");
+	return true;
 }
 
 bool AvPlayer::init_video() {
@@ -118,6 +284,12 @@ bool AvPlayer::init_video() {
 
 	AVBufferRef *hw_device = nullptr;
 	auto create_hw_device = [&](const AVCodecHWConfig *conf) {
+		if (auto cached = get_used_hw_device(conf->device_type)) {
+			log.verbose("using cached  hw device");
+			hw_device = cached;
+			return true;
+		}
+
 		log.verbose("attempting to create hw device '{}'", av_hwdevice_get_type_name(conf->device_type));
 
 		if (!ff_ok(av_hwdevice_ctx_create(&hw_device, conf->device_type, nullptr, nullptr, 0))) {
@@ -178,7 +350,7 @@ bool AvPlayer::init_video() {
 			}
 		}
 
-		log.info("HW decoder using pixel foramt: {}", av_get_pix_fmt_name(ctx->sw_format));
+		log.verbose("HW decoder using pixel format: {}", av_get_pix_fmt_name(ctx->sw_format));
 
 		if (!ff_ok(av_hwframe_ctx_init(video_hw_frames_ref))) {
 			log.error("Could not initialize hw frame");
@@ -210,6 +382,9 @@ void AvPlayer::video_frame_received(const AvFramePtr &frame) {
 			millis,
 			frame->hw_frames_ctx ? HW_BUFFER : SW_BUFFER,
 			video_codec->colorspace });
+	if (frame_needs_emit(video_frames.back())) {
+		emit_frames();
+	}
 }
 
 void AvPlayer::emit_video_frame(const AvVideoFrame &frame) const {
@@ -218,7 +393,6 @@ void AvPlayer::emit_video_frame(const AvVideoFrame &frame) const {
 	if (!events.video_frame) {
 		log.error("no video frame event listener");
 		return;
-
 	}
 
 	if (frame.type == HW_BUFFER) {
@@ -376,6 +550,9 @@ void AvPlayer::audio_frame_received(const AvFramePtr &frame) {
 	// 		frame->ch_layout.nb_channels, frame->sample_rate, static_cast<int>(frame->format));
 
 	audio_frames.push_back({ frame, millis, 0 });
+	if (frame_needs_emit(audio_frames.back())) {
+		emit_frames();
+	}
 }
 
 bool AvPlayer::frame_needs_emit(const AvBaseFrame &f) const {
@@ -384,83 +561,8 @@ bool AvPlayer::frame_needs_emit(const AvBaseFrame &f) const {
 	return start_time.value() + f.millis <= Clock::now();
 }
 
-bool AvPlayer::load(const AvPlayerLoadSettings &settings) {
+void AvPlayer::stop() {
 	reset();
-
-	events = std::move(settings.events);
-	output_settings_requested = settings.output;
-	output_settings = output_settings_requested;
-
-	if (!std::filesystem::exists(settings.file_path)) {
-		log.error("File not found {}", settings.file_path);
-		return false;
-	}
-
-	log.verbose("Begin loading of {}", settings.file_path);
-
-	AVDictionary *options = nullptr;
-	// av_dict_set(&options, "loglevel", "debug", 0);
-	// av_log_set_level(AV_LOG_DEBUG);
-	if (!ff_ok(avformat_open_input(&fmt_ctx, settings.file_path.c_str(), nullptr, &options))) {
-		log.error("avformat_open_input failed");
-		return false;
-	}
-
-	log.verbose("avformat_open_input::ok");
-
-	if (!ff_ok(avformat_find_stream_info(fmt_ctx, nullptr))) {
-		log.error("avformat_find_stream_info failed");
-		return false;
-	}
-
-	log.verbose("avformat_find_stream_info::ok");
-
-	// detect stream indices
-	auto video_index = av_find_best_stream(fmt_ctx, AVMEDIA_TYPE_VIDEO, -1, -1, nullptr, 0);
-	auto audio_index = av_find_best_stream(fmt_ctx, AVMEDIA_TYPE_AUDIO, -1, -1, nullptr, 0);
-
-	if (video_index == AVERROR_STREAM_NOT_FOUND) {
-		log.error("Could not find video stream");
-		video_stream_index.reset();
-		return false;
-	}
-
-	video_stream_index = video_index;
-	log.verbose("found video stream at index: {}", video_stream_index.value());
-
-	video_stream = fmt_ctx->streams[video_stream_index.value()];
-
-	if (audio_index == AVERROR_STREAM_NOT_FOUND) {
-		log.info("No audio stream found");
-		audio_stream_index.reset();
-	} else {
-		audio_stream_index = audio_index;
-		audio_stream = fmt_ctx->streams[audio_stream_index.value()];
-		log.verbose("found audio stream at index: {}", audio_stream_index.value());
-	}
-
-	//
-	fill_file_info();
-
-	///////
-
-	if (!init_video()) {
-		log.error("Could not initialize video stream");
-		return false;
-	}
-
-	if (audio_stream_index) {
-		if (!init_audio()) {
-			log.error("Could not initialize audio stream");
-			return false;
-		}
-	}
-
-	filepath_loaded = settings.file_path;
-	ready_for_playback = true;
-
-	log.info("file loaded {}", settings.file_path);
-	return true;
 }
 
 void AvPlayer::fill_buffers() {
@@ -474,22 +576,24 @@ void AvPlayer::fill_buffers() {
 		// also check if the newest frame should be displayed, if so it is a buffer underrun and handle it right away
 		while (!is_eof && buffer_size() < output_settings.frame_buffer_size) {
 			read_next_frames();
-			// check if a frame needs showing, abort if true
-			for (const auto &f : audio_frames) {
-				if (frame_needs_emit(f)) {
-					break;
-				}
-			}
-			for (const auto &f : video_frames) {
-				if (frame_needs_emit(f)) {
-					break;
-				}
-			}
+			// // check if a frame needs showing, abort if true
+			// for (const auto &f : audio_frames) {
+			// 	if (frame_needs_emit(f)) {
+			// 		break;
+			// 	}
+			// }
+			// for (const auto &f : video_frames) {
+			// 	if (frame_needs_emit(f)) {
+			// 		break;
+			// 	}
+			// }
 		}
 
-		const auto buff_size = buffer_size();
-		if (buff_size < output_settings.frame_buffer_size) {
-			log.warn("buffer underrun: {} / {}", buff_size, output_settings.frame_buffer_size);
+		if (!is_eof) {
+			const auto buff_size = buffer_size();
+			if (buff_size < output_settings.frame_buffer_size) {
+				log.warn("buffer underrun: {} / {}", buff_size, output_settings.frame_buffer_size);
+			}
 		}
 	}
 }
@@ -524,15 +628,25 @@ void AvPlayer::emit_frames() {
 			}
 		}
 		if (frame_drops > 0) {
-			log.warn("dropped {} video frames", frame_drops);
+			log.verbose("dropped {} video frames", frame_drops);
 		}
 		if (result) {
 			emit_video_frame(result.value());
+		}
+	} else if (is_playing()) {
+		if (is_eof) {
+			// video is done, and all frames were submitted
+			if (events.end) {
+				events.end();
+			}
 		}
 	}
 }
 
 void AvPlayer::process() {
+	if (waiting_for_init && num_players < max_players) {
+		init();
+	}
 	if (!playing)
 		return;
 

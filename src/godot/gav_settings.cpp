@@ -14,7 +14,7 @@ namespace gav_settings {
 auto prefix = "gav_player";
 auto threads = "use_threads";
 auto verbose = "verbose_logging";
-auto k_frame_buffer_size = "k_frame_buffer_size";
+auto k_frame_buffer_size = "frame_buffer_size";
 
 inline godot::String p(const String &str) {
 	return prefix + String("/") + str;
@@ -68,8 +68,8 @@ bool use_threads() {
 bool verbose_logging() {
 	return ProjectSettings::get_singleton()->get_setting(p(verbose), false);
 }
-int frame_buffer_size() {
-	return ProjectSettings::get_singleton()->get_setting(p(k_frame_buffer_size), 10);
-}
+// int frame_buffer_size() {
+// 	return ProjectSettings::get_singleton()->get_setting(p(k_frame_buffer_size), 10);
+// }
 
 } //namespace gav_settings

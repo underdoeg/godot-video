@@ -6,4 +6,4 @@ void init();
 bool use_threads();
 bool verbose_logging();
 int frame_buffer_size();
-}
+} //namespace gav_settings

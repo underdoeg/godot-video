@@ -97,6 +97,7 @@ struct AvPlayerEvents {
 	std::function<void(const AvVideoFrame &)> video_frame;
 	std::function<void(const AvAudioFrame &)> audio_frame;
 	std::function<void(const AvFileInfo &)> file_info;
+	std::function<void()> end;
 };
 
 struct AvPlayerLoadSettings {
@@ -136,6 +137,9 @@ class AvPlayer {
 
 	void reset();
 	void fill_file_info();
+
+	bool waiting_for_init = false;
+	bool init();
 	bool init_video();
 	bool init_audio();
 
@@ -173,9 +177,15 @@ public:
 	explicit AvPlayer(AvWrapperLog log = AvWrapperLog()) :
 			log(std::move(log)) {};
 
+	~AvPlayer();
+
+	void stop();
 	void play() {
 		playing = true;
 		paused = false;
+	}
+	void set_paused(bool state) {
+		paused = state;
 	}
 	[[nodiscard]] bool is_playing() const {
 		return playing && !paused;
