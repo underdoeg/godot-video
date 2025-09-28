@@ -114,6 +114,10 @@ void GAVTexture::set_transparent() const {
 }
 
 bool GAVTexture::setup_pipeline(AVPixelFormat pixel_format, AVColorSpace color_space) {
+	if (pixel_format == AV_PIX_FMT_NONE) {
+		log.error("invalid pixel format requested");
+		return false;
+	}
 	if (pipeline_format == pixel_format) {
 		return true;
 	}
@@ -129,7 +133,7 @@ bool GAVTexture::setup_pipeline(AVPixelFormat pixel_format, AVColorSpace color_s
 
 	plane_infos = av_get_plane_infos(pixel_format, info.width, info.height);
 
-	log.verbose("setup pipeline for pixel format: ", av_get_pix_fmt_name(pixel_format));
+	log.info("setup pipeline for pixel format: ", av_get_pix_fmt_name(pixel_format));
 
 	// TODO handle color space
 	auto col_space = color_space;
@@ -260,7 +264,6 @@ void GAVTexture::run_conversion_shader() const {
 		conversion_rd->submit();
 		conversion_rd->sync();
 	}
-	// }
 }
 
 void GAVTexture::update(const AvVideoFrame &frame) {

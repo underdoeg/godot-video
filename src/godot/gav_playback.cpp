@@ -19,11 +19,12 @@ GAVPlayback::GAVPlayback() {
 	if (gav_settings::verbose_logging()) {
 		log.set_level(GAVLog::VERBOSE);
 	}
-	if (gav_settings::use_threads()) {
-		log.warn("threaded video playback does not work yet");
-	}
+	// if (gav_settings::use_threads()) {
+	// 	log.warn("threaded video playback does not work yet");
+	// }
 }
 GAVPlayback::~GAVPlayback() {
+	thread_keep_running = false;
 	if (thread.joinable()) {
 		thread.join();
 	}
@@ -172,7 +173,7 @@ bool GAVPlayback::_is_playing() const {
 }
 
 double GAVPlayback::_get_length() const {
-	return 0.0;
+	return 0;
 }
 
 double GAVPlayback::_get_playback_position() const {

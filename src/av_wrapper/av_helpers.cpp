@@ -20,11 +20,35 @@ std::string av_error_string(int error) {
 	return ret;
 }
 
+bool check_error(const int code, const char *msg) {
+	if (code < 0) {
+		const auto error = av_error_string(code);
+		printf("%s: %s\n", msg, error.c_str());
+		return false;
+	}
+	return true;
+};
+
 AvFramePtr av_frame_ptr() {
 	return { av_frame_alloc(), [](auto f) {
 				av_frame_free(&f);
 			} };
 }
+AvFramePtr av_frame_clone(AvFramePtr src, AvFramePtr dst) {
+	if (!dst) {
+		dst = av_frame_ptr();
+	}
+	dst->format = src->format;
+	dst->width = src->width;
+	dst->height = src->height;
+	dst->ch_layout = src->ch_layout;
+	dst->nb_samples = src->nb_samples;
+	av_frame_get_buffer(dst.get(), 32);
+	check_error(av_frame_copy_props(dst.get(), src.get()), "av_frame_copy_props");
+	check_error(av_frame_copy(dst.get(), src.get()), "av_frame_copy");
+	return dst;
+}
+
 AvPacketPtr av_packet_ptr() {
 	return {
 		av_packet_alloc(), [](auto f) {
@@ -45,15 +69,6 @@ AvPlaneInfos av_get_plane_infos(const AVPixelFormat &pixel_format, const int wid
 	std::array line_sizes{ 0, 0, 0, 0 };
 	std::array<ptrdiff_t, 4> line_sizes_ptr;
 	std::array<size_t, 4> plane_sizes{ 0, 0, 0, 0 };
-
-	const auto check_error = [](const int code, const char *msg) {
-		if (code < 0) {
-			const auto error = av_error_string(code);
-			printf("%s: %s\n", msg, error.c_str());
-			return false;
-		}
-		return true;
-	};
 
 	if (!check_error(av_image_fill_linesizes(line_sizes.data(), pixel_format, width), "av_image_fill_linesizes")) {
 		return {};

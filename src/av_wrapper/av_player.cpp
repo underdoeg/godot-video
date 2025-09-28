@@ -18,6 +18,17 @@ extern "C" {
 #include <libavutil/pixdesc.h>
 }
 
+AvVideoFrame AvVideoFrame::copy() const {
+	AvVideoFrame copy = *this;
+	copy.frame = av_frame_clone(frame, copy.frame);
+	return copy;
+}
+AvAudioFrame AvAudioFrame::copy() const {
+	AvAudioFrame copy = *this;
+	copy.frame = av_frame_clone(frame, copy.frame);
+	return copy;
+}
+
 constexpr int max_players = 24;
 static std::atomic_int num_players = 0;
 
@@ -376,18 +387,16 @@ bool AvPlayer::init_video() {
 	return true;
 }
 
-void AvPlayer::video_frame_received(const AvFramePtr &frame) {
+bool AvPlayer::video_frame_received(const AvFramePtr &frame) {
 	const auto millis = av_get_frame_millis(frame, video_codec);
 	video_frames.push_back({ frame,
 			millis,
 			frame->hw_frames_ctx ? HW_BUFFER : SW_BUFFER,
 			video_codec->colorspace });
-	if (frame_needs_emit(video_frames.back())) {
-		emit_frames();
-	}
+	return frame_needs_emit(video_frames.back());
 }
 
-void AvPlayer::emit_video_frame(const AvVideoFrame &frame) const {
+void AvPlayer::emit_video_frame(const AvVideoFrame &frame) {
 	// log.info("emit_video_frame");
 	//  only emit software frame buffers for now
 	if (!events.video_frame) {
@@ -397,7 +406,9 @@ void AvPlayer::emit_video_frame(const AvVideoFrame &frame) const {
 
 	if (frame.type == HW_BUFFER) {
 		auto target = frame;
-		target.frame = av_frame_ptr();
+		if (!video_transfer_frame)
+			video_transfer_frame = av_frame_ptr();
+		target.frame = video_transfer_frame;
 		if (!ff_ok(av_hwframe_transfer_data(target.frame.get(), frame.frame.get(), 0))) {
 			log.error("Could not transfer_data from hw to sw");
 		}
@@ -406,6 +417,8 @@ void AvPlayer::emit_video_frame(const AvVideoFrame &frame) const {
 	} else {
 		events.video_frame(frame);
 	}
+	av_frame_unref(frame.frame.get());
+	video_frames_to_reuse.push_back(frame.frame);
 }
 
 bool AvPlayer::init_audio() {
@@ -457,7 +470,7 @@ bool AvPlayer::init_audio() {
 	return true;
 }
 
-void AvPlayer::emit_audio_frame(const AvAudioFrame &frame) const {
+void AvPlayer::emit_audio_frame(const AvAudioFrame &frame) {
 	// log.info("emit_audio_frame");
 	if (!events.audio_frame) {
 		log.error("no audio frame event listener");
@@ -485,74 +498,93 @@ void AvPlayer::emit_audio_frame(const AvAudioFrame &frame) const {
 			0);
 
 	events.audio_frame(target);
+	av_frame_unref(target.frame.get());
+	audio_frames_to_reuse.push_back(target.frame);
 }
 
-void AvPlayer::read_next_frames() {
+bool AvPlayer::read_next_frames() {
 	av_packet_unref(packet.get());
 
 	const auto ret = av_read_frame(fmt_ctx, packet.get());
 	if (ret == AVERROR_EOF) {
 		log.info("eof");
 		is_eof = true;
-		return;
+		return true;
 	}
 	if (!ff_ok(ret)) {
 		log.error("Could not read frame");
-		return;
+		return false;
 	}
 
 	// get the correct codec context for the stream index
 	AVCodecContext *codec = nullptr;
+	bool is_audio = false;
 	if (packet->stream_index == video_stream_index.value()) {
 		codec = video_codec;
 	} else if (audio_stream_index && packet->stream_index == audio_stream_index.value()) {
 		codec = audio_codec;
+		is_audio = true;
 	}
 
 	if (!codec) {
 		// we do not care about this stream
-		return;
+		return false;
 	}
 
 	if (!ff_ok(avcodec_send_packet(codec, packet.get()), "avcodec_send_packet")) {
-		return;
+		return false;
 	}
+
+	const auto get_frame_ptr = [&] {
+		// reuse frames if possible
+		auto &frames_to_reuse = is_audio ? audio_frames_to_reuse : video_frames_to_reuse;
+		if (frames_to_reuse.empty()) {
+			return av_frame_ptr();
+		}
+		auto frame = frames_to_reuse.front();
+		frames_to_reuse.pop_front();
+		return frame;
+	};
 
 	// AvFramePtr current_frame;
 	int receive_counter = 0;
 	int receive_res = 0;
+	bool frame_need_emit = false;
 	while (receive_res == 0) {
-		const auto frame = av_frame_ptr();
+		const auto frame = get_frame_ptr();
 		if (receive_counter > 100) {
 			log.verbose("breaking out of receive loop: {}", receive_counter);
 		}
 		receive_res = avcodec_receive_frame(codec, frame.get());
 		if (receive_res == 0) {
-			frame_received(frame, packet->stream_index);
+			if (frame_received(frame, packet->stream_index)) {
+				frame_need_emit = true;
+			}
 		}
 		receive_counter++;
 	}
+	return frame_need_emit;
 }
 
-void AvPlayer::frame_received(const AvFramePtr &frame, const int stream_index) {
+bool AvPlayer::frame_received(const AvFramePtr &frame, const int stream_index) {
 	// find millis of frame
 
 	if (stream_index == video_stream_index.value()) {
-		video_frame_received(frame);
-	} else if (audio_stream_index && stream_index == audio_stream_index.value()) {
-		audio_frame_received(frame);
+		return video_frame_received(frame);
 	}
+	if (audio_stream_index && stream_index == audio_stream_index.value()) {
+		return audio_frame_received(frame);
+	}
+	return false;
 }
 
-void AvPlayer::audio_frame_received(const AvFramePtr &frame) {
-	auto millis = av_get_frame_millis(frame, audio_codec);
-	// log.info("audio_frame_received - num channels: {}, sample rate: {}, sample format: {}",
-	// 		frame->ch_layout.nb_channels, frame->sample_rate, static_cast<int>(frame->format));
-
+bool AvPlayer::audio_frame_received(const AvFramePtr &frame) {
+	const auto millis = av_get_frame_millis(frame, audio_codec);
 	audio_frames.push_back({ frame, millis, 0 });
-	if (frame_needs_emit(audio_frames.back())) {
-		emit_frames();
-	}
+	return frame_needs_emit(audio_frames.back());
+	// if (frame_needs_emit(audio_frames.back())) {
+	// 	emit_frames();
+	// }
 }
 
 bool AvPlayer::frame_needs_emit(const AvBaseFrame &f) const {
@@ -568,34 +600,25 @@ void AvPlayer::stop() {
 void AvPlayer::fill_buffers() {
 	// read new frames
 	// if the video has not yet started, the process is simple, fill up the  buffer
-	if (!has_started()) {
-		while (!is_eof && buffer_size() < output_settings.frame_buffer_size) {
-			read_next_frames();
-		}
-	} else {
-		// also check if the newest frame should be displayed, if so it is a buffer underrun and handle it right away
-		while (!is_eof && buffer_size() < output_settings.frame_buffer_size) {
-			read_next_frames();
-			// // check if a frame needs showing, abort if true
-			// for (const auto &f : audio_frames) {
-			// 	if (frame_needs_emit(f)) {
-			// 		break;
-			// 	}
-			// }
-			// for (const auto &f : video_frames) {
-			// 	if (frame_needs_emit(f)) {
-			// 		break;
-			// 	}
-			// }
-		}
-
-		if (!is_eof) {
-			const auto buff_size = buffer_size();
-			if (buff_size < output_settings.frame_buffer_size) {
-				log.warn("buffer underrun: {} / {}", buff_size, output_settings.frame_buffer_size);
-			}
+	// if (!has_started()) {
+	// 	while (!is_eof && buffer_size() < output_settings.frame_buffer_size) {
+	// 		if (!read_next_frames()) break;
+	// 	}
+	// } else {
+	// also check if the newest frame should be displayed, if so it is a buffer underrun and handle it right away
+	while (!is_eof && buffer_size() < output_settings.frame_buffer_size) {
+		if (read_next_frames()) {
+			break;
 		}
 	}
+
+	if (!is_eof) {
+		const auto buff_size = buffer_size();
+		if (buff_size < output_settings.frame_buffer_size) {
+			log.warn("buffer underrun: {} / {}", buff_size, output_settings.frame_buffer_size);
+		}
+	}
+	// }
 }
 
 void AvPlayer::emit_frames() {

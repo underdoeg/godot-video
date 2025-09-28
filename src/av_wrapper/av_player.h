@@ -79,22 +79,12 @@ struct AvBaseFrame {
 struct AvVideoFrame : AvBaseFrame {
 	AvVideoFrameType type;
 	AVColorSpace color_space = AVCOL_SPC_UNSPECIFIED;
-	AvVideoFrame copy() const {
-		AvVideoFrame copy = *this;
-		copy.frame = av_frame_ptr();
-		av_frame_copy(copy.frame.get(), frame.get());
-		return copy;
-	}
+	[[nodiscard]] AvVideoFrame copy() const;
 };
 
 struct AvAudioFrame : AvBaseFrame {
 	int byte_size = 0;
-	AvAudioFrame copy() const {
-		AvAudioFrame copy = *this;
-		copy.frame = av_frame_ptr();
-		av_frame_copy(copy.frame.get(), frame.get());
-		return copy;
-	}
+	[[nodiscard]] AvAudioFrame copy() const;
 };
 
 struct AvWrapperOutputSettings {
@@ -122,6 +112,9 @@ class AvPlayer {
 	using Clock = std::chrono::high_resolution_clock;
 
 	[[nodiscard]] bool ff_ok(int result, const std::string &prepend = "") const;
+
+	std::deque<AvFramePtr> video_frames_to_reuse, audio_frames_to_reuse;
+	AvFramePtr video_transfer_frame;
 
 	AVFormatContext *fmt_ctx = nullptr;
 	std::optional<int> video_stream_index, audio_stream_index;
@@ -155,14 +148,15 @@ class AvPlayer {
 	bool init_video();
 	bool init_audio();
 
-	void read_next_frames();
-	void frame_received(const AvFramePtr &frame, int stream_index);
-	void audio_frame_received(const AvFramePtr &frame);
-	void video_frame_received(const AvFramePtr &frame);
+	// these methods return true if the new frames should be displayed immediately
+	bool read_next_frames();
+	bool frame_received(const AvFramePtr &frame, int stream_index);
+	bool audio_frame_received(const AvFramePtr &frame);
+	bool video_frame_received(const AvFramePtr &frame);
 
 	bool frame_needs_emit(const AvBaseFrame &f) const;
-	void emit_video_frame(const AvVideoFrame &frame) const;
-	void emit_audio_frame(const AvAudioFrame &frame) const;
+	void emit_video_frame(const AvVideoFrame &frame);
+	void emit_audio_frame(const AvAudioFrame &frame);
 	void emit_frames();
 
 	std::atomic_bool playing = false;
