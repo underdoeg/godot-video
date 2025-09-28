@@ -149,6 +149,7 @@ class AvPlayer {
 
 	bool waiting_for_init = false;
 	bool init();
+	bool create_video_codec_context();
 	bool init_video();
 	bool init_audio();
 

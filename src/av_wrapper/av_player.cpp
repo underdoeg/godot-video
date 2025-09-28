@@ -30,33 +30,111 @@ AvAudioFrame AvAudioFrame::copy(const AvFramePtr &av_frame) const {
 }
 
 constexpr int max_players = 24;
-static std::atomic_int num_players = 0;
+static std::atomic_int num_video_codecs = 0;
 
-constexpr bool reusing_enabled = true;
-static std::mutex cached_hw_devices_mtx;
-static std::map<AVHWDeviceType, std::deque<AVBufferRef *>> cached_hw_devices;
+constexpr bool reusing_enabled = true; // does not work yet
 
-AVBufferRef *get_used_hw_device(const AVHWDeviceType type) {
+struct ReuseCodecInfo {
+	AVCodecID id;
+	int width;
+	int height;
+	bool operator==(const ReuseCodecInfo &other) const {
+		// printf("=============== compare %d==%d, %d==%d, %d==%d", id, other.id, width, other.width, height, other.height);
+		return id == other.id && width == other.width && height == other.height;
+	}
+};
+//
+// template <>
+// struct std::hash<ReuseCodecInfo> {
+// 	std::size_t operator()(const ReuseCodecInfo &k) const {
+// 		using std::hash;
+// 		using std::size_t;
+// 		using std::string;
+// 		return ((hash<int>()(k.id) ^ (hash<int>()(k.width) << 1)) >> 1) ^ (hash<int>()(k.height) << 1);
+// 	}
+// };
+
+static std::mutex cached_codecs_mtx;
+// static std::unordered_map<ReuseCodecInfo, std::deque<AVCodecContext *>> cached_codecs;
+static std::vector<std::pair<ReuseCodecInfo, AVCodecContext *>> cached_codecs_list;
+
+AVCodecContext *get_used_codec(AVStream* stream) {
 	if (!reusing_enabled)
 		return nullptr;
-	// printf("get device from cache: %s\n", av_hwdevice_get_type_name(type));
-	std::scoped_lock<std::mutex> lock(cached_hw_devices_mtx);
-	if (cached_hw_devices[type].empty()) {
+	// printf("get codec from cache: %s\n", avcodec_get_name(id));
+	ReuseCodecInfo info = {
+		stream->codecpar->codec_id,
+		stream->codecpar->width,
+		stream->codecpar->height
+	};
+
+	printf("%d -- %d", info.width, info.height);
+
+	std::scoped_lock<std::mutex> lock(cached_codecs_mtx);
+	if (cached_codecs_list.empty()) {
 		return nullptr;
 	}
-	auto ret = cached_hw_devices[type].front();
-	cached_hw_devices[type].pop_front();
-	return ret;
+	int index = -1;
+	for (size_t i = 0; i < cached_codecs_list.size(); i++) {
+		if (cached_codecs_list[i].first == info) {
+			index = i;
+			break;
+		}
+	}
+	if (index > 0) {
+		printf("-----------------------------------------------------------------------------------------------------\n");
+		auto ret = cached_codecs_list[index].second;
+		cached_codecs_list.erase(cached_codecs_list.begin() + index);
+		return ret;
+	}
+	return nullptr;
+
+	// auto ret = cached_codecs[id].front();
+	// cached_codecs[id].pop_front();
+	// return ret;
 }
 
-void reuse_hw_device(const AVHWDeviceType type, AVBufferRef *hw_device) {
+bool reuse_codec(AVCodecContext *codec) {
 	if (!reusing_enabled)
-		return;
+		return false;
 
-	// printf("add device to cache: %s\n", av_hwdevice_get_type_name(type));
-	std::scoped_lock<std::mutex> lock(cached_hw_devices_mtx);
-	cached_hw_devices[type].push_back(hw_device);
+	const ReuseCodecInfo info = {
+		codec->codec_id,
+		codec->width,
+		codec->height
+	};
+
+
+	avcodec_flush_buffers(codec);
+	std::scoped_lock<std::mutex> lock(cached_codecs_mtx);
+	cached_codecs_list.push_back({info, codec});
+	return true;
 }
+
+// static std::mutex cached_hw_devices_mtx;
+// static std::map<AVHWDeviceType, std::deque<AVBufferRef *>> cached_hw_devices;
+//
+// AVBufferRef *get_used_hw_device(const AVHWDeviceType type) {
+// 	if (!reusing_enabled)
+// 		return nullptr;
+// 	// printf("get device from cache: %s\n", av_hwdevice_get_type_name(type));
+// 	std::scoped_lock<std::mutex> lock(cached_hw_devices_mtx);
+// 	if (cached_hw_devices[type].empty()) {
+// 		return nullptr;
+// 	}
+// 	auto ret = cached_hw_devices[type].front();
+// 	cached_hw_devices[type].pop_front();
+// 	return ret;
+// }
+//
+// void reuse_hw_device(const AVHWDeviceType type, AVBufferRef *hw_device) {
+// 	if (!reusing_enabled)
+// 		return;
+//
+// 	// printf("add device to cache: %s\n", av_hwdevice_get_type_name(type));
+// 	std::scoped_lock<std::mutex> lock(cached_hw_devices_mtx);
+// 	cached_hw_devices[type].push_back(hw_device);
+// }
 
 bool AvPlayer::ff_ok(int result, const std::string &prepend) const {
 	if (result < 0) {
@@ -93,7 +171,10 @@ void AvPlayer::reset() {
 		// 	hw_device = video_codec->hw_device_ctx;
 		// 	video_codec->hw_device_ctx = nullptr;
 		// }
-		avcodec_free_context(&video_codec);
+		if (!reuse_codec(video_codec)) {
+			avcodec_free_context(&video_codec);
+			--num_video_codecs;
+		}
 	}
 
 	if (audio_codec) {
@@ -102,7 +183,6 @@ void AvPlayer::reset() {
 
 	if (fmt_ctx) {
 		avformat_close_input(&fmt_ctx);
-		--num_players;
 	}
 	video_codec = audio_codec = nullptr;
 	fmt_ctx = nullptr;
@@ -205,11 +285,11 @@ bool AvPlayer::load(const AvPlayerLoadSettings &settings) {
 	filepath_loaded = settings.file_path;
 	log.info("file loaded {}", settings.file_path);
 
-	if (num_players < max_players) {
+	// if (num_video_codecs < max_players) {
 		return init();
-	}
+	// }
 
-	log.info("too many open players {}, waiting with init untile they are closed", static_cast<int>(num_players));
+	log.info("too many open players {}, waiting with init untile they are closed", static_cast<int>(num_video_codecs));
 
 	waiting_for_init = true;
 
@@ -218,9 +298,9 @@ bool AvPlayer::load(const AvPlayerLoadSettings &settings) {
 
 bool AvPlayer::init() {
 	waiting_for_init = false;
-	++num_players;
+	++num_video_codecs;
 
-	log.verbose("number of players: {}", static_cast<int>(num_players));
+	log.verbose("number of players: {}", static_cast<int>(num_video_codecs));
 
 	log.verbose("init begin");
 
@@ -240,11 +320,7 @@ bool AvPlayer::init() {
 	log.verbose("init complete");
 	return true;
 }
-
-bool AvPlayer::init_video() {
-	// file_info.video.codec = video_stream->codecpar->codec_type
-	log.verbose("begin init_video");
-
+bool AvPlayer::create_video_codec_context() {
 	// setup the decoder
 	const AVCodec *decoder = avcodec_find_decoder(video_stream->codecpar->codec_id);
 	if (!decoder) {
@@ -295,12 +371,6 @@ bool AvPlayer::init_video() {
 
 	AVBufferRef *hw_device = nullptr;
 	auto create_hw_device = [&](const AVCodecHWConfig *conf) {
-		if (auto cached = get_used_hw_device(conf->device_type)) {
-			log.verbose("using cached  hw device");
-			hw_device = cached;
-			return true;
-		}
-
 		log.verbose("attempting to create hw device '{}'", av_hwdevice_get_type_name(conf->device_type));
 
 		if (!ff_ok(av_hwdevice_ctx_create(&hw_device, conf->device_type, nullptr, nullptr, 0))) {
@@ -381,6 +451,34 @@ bool AvPlayer::init_video() {
 	if (!ff_ok(avcodec_open2(video_codec, decoder, nullptr))) {
 		log.error("Could not open video decoder");
 		return false;
+	}
+	return true;
+}
+
+bool AvPlayer::init_video() {
+	// file_info.video.codec = video_stream->codecpar->codec_type
+	log.verbose("begin init_video");
+	if (!video_stream) {
+		return false;
+	}
+
+	video_codec = get_used_codec(video_stream);
+	if (video_codec) {
+		log.verbose("reusing video codec from cache: {}", avcodec_get_name(video_stream->codecpar->codec_id));
+		// we need to set the codec parameters again
+		if (!ff_ok(avcodec_parameters_to_context(video_codec, video_stream->codecpar))) {
+			log.error("Could not set video codec parameters");
+			avcodec_free_context(&video_codec);
+			return false;
+		}
+		video_codec->time_base = video_stream->time_base;
+	} else {
+		if (!create_video_codec_context()) {
+			if (video_codec) {
+				avcodec_free_context(&video_codec);
+			}
+			return false;
+		}
 	}
 
 	log.verbose("end init_video");
@@ -668,7 +766,7 @@ void AvPlayer::emit_frames() {
 }
 
 void AvPlayer::process() {
-	if (waiting_for_init && num_players < max_players) {
+	if (waiting_for_init && num_video_codecs < max_players) {
 		init();
 	}
 

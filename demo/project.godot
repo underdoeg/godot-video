@@ -27,5 +27,5 @@ window/vsync/vsync_mode=0
 
 [gav_player]
 
-verbose_logging=true
+verbose_logging=false
 use_threads=true
