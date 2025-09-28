@@ -69,6 +69,7 @@ enum AvVideoFrameType {
 	VK_BUFFER,
 	HW_BUFFER,
 	SW_BUFFER,
+	UNKNOWN
 };
 
 struct AvBaseFrame {
@@ -77,14 +78,14 @@ struct AvBaseFrame {
 };
 
 struct AvVideoFrame : AvBaseFrame {
-	AvVideoFrameType type;
+	AvVideoFrameType type = UNKNOWN;
 	AVColorSpace color_space = AVCOL_SPC_UNSPECIFIED;
-	[[nodiscard]] AvVideoFrame copy() const;
+	[[nodiscard]] AvVideoFrame copy(const AvFramePtr &av_frame =av_frame_ptr()) const;
 };
 
 struct AvAudioFrame : AvBaseFrame {
 	int byte_size = 0;
-	[[nodiscard]] AvAudioFrame copy() const;
+	[[nodiscard]] AvAudioFrame copy(const AvFramePtr &av_frame =av_frame_ptr()) const;
 };
 
 struct AvWrapperOutputSettings {
@@ -104,7 +105,10 @@ struct AvPlayerEvents {
 
 struct AvPlayerLoadSettings {
 	std::string file_path;
-	AvWrapperOutputSettings output;
+	AvWrapperOutputSettings output{
+		.video_hw_enabled = true,
+		.video_hw_type = AV_HWDEVICE_TYPE_VAAPI
+	};
 	AvPlayerEvents events;
 };
 

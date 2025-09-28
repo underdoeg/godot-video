@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="godot cpp template"
-run/main_scene="uid://b568gxnsliogt"
+run/main_scene="uid://dh0oj81pufivs"
 config/features=PackedStringArray("4.5", "Forward Plus")
 config/icon="res://icon.svg"
 
@@ -27,5 +27,5 @@ window/vsync/vsync_mode=0
 
 [gav_player]
 
-frame_buffer_size=3
 verbose_logging=true
+use_threads=true

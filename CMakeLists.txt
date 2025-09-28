@@ -234,6 +234,7 @@ ExternalProject_Add(
 
 message("FFMPEG will be installed into ${FFMPEG_INSTALL}")
 
+
 #add_library(ForexConnect SHARED IMPORTED)
 #set_target_properties(ForexConnect PROPERTIES IMPORTED_LOCATION ${FXCM_LIB_DIR}/libForexConnect.so)
 

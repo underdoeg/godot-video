@@ -1,13 +1,14 @@
 #include "gav_playback.h"
 #include "gav_settings.h"
-#include "godot_cpp/classes/rendering_server.hpp"
 
-#include <oneapi/tbb/info.h>
 
 #include <condition_variable>
 #include <filesystem>
+
+#include <godot_cpp/classes/rendering_server.hpp>
 #include <godot_cpp/classes/engine.hpp>
-#include <godot_cpp/classes/file_access.hpp>
+#include <godot_cpp/classes/image.hpp>
+#include <godot_cpp/classes/image_texture.hpp>
 #include <godot_cpp/classes/project_settings.hpp>
 
 using namespace godot;
@@ -31,9 +32,6 @@ GAVPlayback::~GAVPlayback() {
 }
 
 bool GAVPlayback::load(const String &p_path) {
-	if (Engine::get_singleton()->is_editor_hint()) {
-		return false;
-	}
 
 	if (thread.joinable()) {
 		thread.join();
@@ -42,6 +40,16 @@ bool GAVPlayback::load(const String &p_path) {
 	auto path_global = ProjectSettings::get_singleton()->globalize_path(p_path);
 	auto splits = path_global.split("/");
 	log.set_name(splits[splits.size() - 1]);
+
+
+	if (Engine::get_singleton()->is_editor_hint()) {
+		auto thumb_path = av_thumbnail_path(path_global.ascii().ptr());
+		auto img = Image::load_from_file(thumb_path.c_str());
+		// img->load_from_file(thumb_path.c_str());
+		thumb_texture = ImageTexture::create_from_image(img);
+		return false;
+	}
+
 
 	// create av playback
 	av = std::make_shared<AvPlayer>(AvWrapperLog{
@@ -62,7 +70,6 @@ bool GAVPlayback::load(const String &p_path) {
 		std::condition_variable cv;
 		std::optional<AvFileInfo> info_from_thread;
 		settings.events.video_frame = [&](const AvVideoFrame &frame) {
-			// log.info("Video frame loaded");
 			auto copy = frame.copy();
 			std::scoped_lock lock(video_mutex);
 			video_frame_thread = copy;
@@ -72,7 +79,6 @@ bool GAVPlayback::load(const String &p_path) {
 			auto copy = frame.copy();
 			std::scoped_lock lock(audio_mutex);
 			audio_frames_thread.push_back(copy);
-			// log.info("Audio frame loaded");
 		};
 
 		settings.events.file_info = [&](const auto &info) {
@@ -125,6 +131,7 @@ void GAVPlayback::set_file_info(const AvFileInfo &info) {
 }
 
 void GAVPlayback::on_video_frame(const AvVideoFrame &frame) const {
+	MEASURE;
 	// log.info("video");
 	if (!texture) {
 		log.error("received video frame before texture was created. this should not happen.");
@@ -186,6 +193,9 @@ void GAVPlayback::_set_audio_track(int32_t p_idx) {
 }
 
 Ref<Texture2D> GAVPlayback::_get_texture() const {
+	if (Engine::get_singleton()->is_editor_hint()) {
+		return thumb_texture;
+	}
 	if (!texture) {
 		log.error("_get_texture called before GAVTexture was created. This should not happen");
 		return nullptr;
@@ -202,6 +212,8 @@ int32_t GAVPlayback::_get_mix_rate() const {
 }
 
 void GAVPlayback::_update(double p_delta) {
+	MEASURE_N("MAIN");
+
 	if (threaded) {
 		std::optional<AvVideoFrame> frame;
 		{

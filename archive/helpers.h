@@ -38,14 +38,14 @@ inline AVFramePtr av_frame_ptr() {
 	});
 }
 
-class TimeMeasue {
+class TimeMeasure {
 	std::chrono::high_resolution_clock::time_point start_time;
 	godot::String name;
 
 public:
-	TimeMeasue(godot::String n) :
+	TimeMeasure(godot::String n) :
 			start_time(std::chrono::high_resolution_clock::now()), name(n) {}
-	~TimeMeasue() {
+	~TimeMeasure() {
 		auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::high_resolution_clock::now() - start_time);
 		godot::UtilityFunctions::print(name, " ==  ", millis.count(), "ms");
 	}

@@ -107,10 +107,16 @@ void GAVTexture::set_transparent() const {
 	// 	rd->texture_update(planes[i], 0, pixels);
 	// }
 	pixels.resize(info.width * info.height * 4);
-	// for (int i = 0; i < info.width *info.height * 4; i++) {
-	// 	pixels.ptrw()[i] = rand() % 256;
+
+	auto ptr = pixels.ptrw();
+	// for (int i = 0; i < info.width * info.height * 4; i+=4) {
+	// 	// pixels.ptrw()[i] = rand() % 256;
+	// 	ptr[i] = 0;
+	// 	ptr[i + 1] = 0;
+	// 	ptr[i + 2] = 0;
+	// 	ptr[i + 3] = 127;
 	// }
-	main_rd->texture_update(texture_rid, 0, pixels);
+	conversion_rd->texture_update(texture_rid, 0, pixels);
 }
 
 bool GAVTexture::setup_pipeline(AVPixelFormat pixel_format, AVColorSpace color_space) {
@@ -240,6 +246,7 @@ bool GAVTexture::setup_pipeline(AVPixelFormat pixel_format, AVColorSpace color_s
 }
 
 void GAVTexture::run_conversion_shader() const {
+	MEASURE;
 	if (!conversion_shader.is_valid()) {
 		UtilityFunctions::printerr("Conversion shader is invalid");
 		return;
@@ -267,6 +274,7 @@ void GAVTexture::run_conversion_shader() const {
 }
 
 void GAVTexture::update(const AvVideoFrame &frame) {
+	MEASURE_N("Texture");
 	if (frame.type == VK_BUFFER) {
 		log.warn("VK_BUFFER frame types are not yet implemented.");
 		return;
@@ -281,24 +289,25 @@ void GAVTexture::update(const AvVideoFrame &frame) {
 		return;
 	}
 
-	buffers.resize(plane_infos.size());
+	if (buffers.size() != plane_infos.size())
+		buffers.resize(plane_infos.size());
 
 	for (int i = 0; i < plane_infos.size(); i++) {
 		const auto [width, height, depth, line_size, byte_size] = plane_infos[i];
 
-		buffers[i].resize(byte_size);
+		if (buffers[i].size() < byte_size)
+			buffers[i].resize(byte_size);
 
-		auto src = frame.frame->data[i];
+		const auto src = frame.frame->data[i];
 
 		// we expect tight lines without extra, but line_size of the frame can have additional padding. check for it
 		const auto frame_line_size = frame.frame->linesize[i];
 		// UtilityFunctions::print(info.line_size, " -- ", frame->linesize[i]);
 		if (frame_line_size == line_size) {
+			MEASURE_N("memcopy tight");
 			memcpy(buffers[i].ptrw(), src, byte_size);
 		} else {
-			if (buffers[i].size() < byte_size) {
-				buffers[i].resize(byte_size);
-			}
+			MEASURE_N("memcopy lines");
 			// copy line for line
 			for (size_t y = 0; y < height; y++) {
 				memcpy(buffers[i].ptrw() + line_size * y, src + frame_line_size * y, line_size);
@@ -306,6 +315,7 @@ void GAVTexture::update(const AvVideoFrame &frame) {
 		}
 
 		if (plane_textures.size() > i) {
+			MEASURE_N("upload");
 			conversion_rd->texture_update(plane_textures.at(i), 0, buffers[i]);
 		}
 	}

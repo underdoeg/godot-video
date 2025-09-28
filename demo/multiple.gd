@@ -23,7 +23,7 @@ func _ready() -> void:
 	_on_timer_timeout()
 	pass
 
-func _process(delta):
+func _process(_delta):
 	if video:
 		$seconds.text = str(video.stream_position) + "s"
 
@@ -35,8 +35,8 @@ func load_many():
 	#await get_tree().process_frame
 	#await get_tree().process_frame
 	
-	$container.columns = 10
-	for i in range(4):
+	$container.columns = 4
+	for i in range(12):
 		var player = VideoStreamPlayer.new()
 		player.size = Vector2(20, 20)
 		$container.add_child(player)
@@ -65,7 +65,10 @@ func _input(event):
 				%video_tex.texture = %video.get_video_texture()
 				%video_tex2.texture = %video.get_video_texture()
 			if event.keycode == KEY_SPACE:
-				%video.play()
+				if %video.is_playing():
+					%video.pause()
+				else:
+					%video.play()
 			if event.keycode == KEY_P:
 				print(%video.stream_position)
 			if event.keycode == KEY_F:

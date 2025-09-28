@@ -5,6 +5,7 @@
 #include "gav_texture.h"
 
 #include <functional>
+#include <godot_cpp/classes/image_texture.hpp>
 #include <godot_cpp/classes/texture2d.hpp>
 #include <godot_cpp/classes/video_stream_playback.hpp>
 #include <godot_cpp/variant/string.hpp>
@@ -32,12 +33,13 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 	std::mutex video_mutex;
 	std::optional<AvVideoFrame> video_frame_thread;
 	std::deque<AvAudioFrame> audio_frames_thread;
+	godot::Ref<godot::ImageTexture> thumb_texture;
 
 	godot::PackedFloat32Array audio_buffer;
 
 	void on_video_frame(const AvVideoFrame &frame) const;
 	void on_audio_frame(const AvAudioFrame &frame);
-	void set_file_info(const AvFileInfo& info);
+	void set_file_info(const AvFileInfo &info);
 
 public:
 	GAVPlayback();

@@ -6,6 +6,7 @@
 
 #include <libavutil/frame.h>
 
+#include <filesystem>
 #include <memory>
 
 extern "C" {
@@ -64,6 +65,13 @@ std::chrono::milliseconds av_get_frame_millis(const AvFramePtr &frame, const AVC
 	auto seconds = std::chrono::duration<double>(pts);
 	return std::chrono::duration_cast<std::chrono::milliseconds>(seconds);
 }
+std::string av_thumbnail_path(const std::string &video_path) {
+	const auto tmp_path = std::filesystem::temp_directory_path() / std::filesystem::path(video_path).filename().replace_extension("jpg");
+	printf("create thumbnail of %s at %s\n", video_path.c_str(), tmp_path.string().c_str());
+	const std::string cmd = std::format("ffmpeg -i {} -vf \"thumbnail\" -frames:v 1 {} -y -loglevel error", video_path, tmp_path.string());
+	std::system(cmd.c_str());
+	return tmp_path.string();
+}
 
 AvPlaneInfos av_get_plane_infos(const AVPixelFormat &pixel_format, const int width, const int height) {
 	std::array line_sizes{ 0, 0, 0, 0 };
@@ -102,4 +110,9 @@ AvPlaneInfos av_get_plane_infos(const AVPixelFormat &pixel_format, const int wid
 	}
 
 	return ret;
+}
+///////////////////////////////////////////////////////
+TimeMeasure::~TimeMeasure() {
+	const auto micros = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now() - start_time);
+	printf("[%s] %ldms\n", name.c_str(), (micros.count() / 1000));
 }

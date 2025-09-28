@@ -18,21 +18,21 @@ extern "C" {
 #include <libavutil/pixdesc.h>
 }
 
-AvVideoFrame AvVideoFrame::copy() const {
+AvVideoFrame AvVideoFrame::copy(const AvFramePtr &av_frame) const {
 	AvVideoFrame copy = *this;
-	copy.frame = av_frame_clone(frame, copy.frame);
+	copy.frame = av_frame_clone(frame, av_frame);
 	return copy;
 }
-AvAudioFrame AvAudioFrame::copy() const {
+AvAudioFrame AvAudioFrame::copy(const AvFramePtr &av_frame) const {
 	AvAudioFrame copy = *this;
-	copy.frame = av_frame_clone(frame, copy.frame);
+	copy.frame = av_frame_clone(frame, av_frame);
 	return copy;
 }
 
 constexpr int max_players = 24;
 static std::atomic_int num_players = 0;
 
-constexpr bool reusing_enabled = false;
+constexpr bool reusing_enabled = true;
 static std::mutex cached_hw_devices_mtx;
 static std::map<AVHWDeviceType, std::deque<AVBufferRef *>> cached_hw_devices;
 
@@ -88,11 +88,11 @@ void AvPlayer::reset() {
 
 	AVBufferRef *hw_device = nullptr;
 	if (video_codec) {
-		if (reusing_enabled && video_codec->hw_device_ctx) {
-			// reuse hw device types
-			hw_device = video_codec->hw_device_ctx;
-			video_codec->hw_device_ctx = nullptr;
-		}
+		// if (reusing_enabled && video_codec->hw_device_ctx) {
+		// 	// reuse hw device types
+		// 	hw_device = video_codec->hw_device_ctx;
+		// 	video_codec->hw_device_ctx = nullptr;
+		// }
 		avcodec_free_context(&video_codec);
 	}
 
@@ -106,8 +106,8 @@ void AvPlayer::reset() {
 	}
 	video_codec = audio_codec = nullptr;
 	fmt_ctx = nullptr;
-	//
-	// if (hw_device) {
+
+	// if (reusing_enabled && hw_device) {
 	// 	reuse_hw_device(output_settings.video_hw_type, hw_device);
 	// 	// log.info("added {}", av_hwdevice_get_type_name(output_settings.video_hw_type));
 	// }
@@ -145,7 +145,7 @@ void AvPlayer::fill_file_info() {
 bool AvPlayer::load(const AvPlayerLoadSettings &settings) {
 	reset();
 
-	events = std::move(settings.events);
+	events = settings.events;
 	output_settings_requested = settings.output;
 	output_settings = output_settings_requested;
 
@@ -397,6 +397,7 @@ bool AvPlayer::video_frame_received(const AvFramePtr &frame) {
 }
 
 void AvPlayer::emit_video_frame(const AvVideoFrame &frame) {
+	MEASURE;
 	// log.info("emit_video_frame");
 	//  only emit software frame buffers for now
 	if (!events.video_frame) {
@@ -405,6 +406,7 @@ void AvPlayer::emit_video_frame(const AvVideoFrame &frame) {
 	}
 
 	if (frame.type == HW_BUFFER) {
+		MEASURE_N("hw transfer");
 		auto target = frame;
 		if (!video_transfer_frame)
 			video_transfer_frame = av_frame_ptr();
@@ -471,6 +473,7 @@ bool AvPlayer::init_audio() {
 }
 
 void AvPlayer::emit_audio_frame(const AvAudioFrame &frame) {
+	MEASURE;
 	// log.info("emit_audio_frame");
 	if (!events.audio_frame) {
 		log.error("no audio frame event listener");
@@ -547,21 +550,16 @@ bool AvPlayer::read_next_frames() {
 	};
 
 	// AvFramePtr current_frame;
-	int receive_counter = 0;
 	int receive_res = 0;
 	bool frame_need_emit = false;
 	while (receive_res == 0) {
 		const auto frame = get_frame_ptr();
-		if (receive_counter > 100) {
-			log.verbose("breaking out of receive loop: {}", receive_counter);
-		}
 		receive_res = avcodec_receive_frame(codec, frame.get());
 		if (receive_res == 0) {
 			if (frame_received(frame, packet->stream_index)) {
 				frame_need_emit = true;
 			}
 		}
-		receive_counter++;
 	}
 	return frame_need_emit;
 }
@@ -582,9 +580,6 @@ bool AvPlayer::audio_frame_received(const AvFramePtr &frame) {
 	const auto millis = av_get_frame_millis(frame, audio_codec);
 	audio_frames.push_back({ frame, millis, 0 });
 	return frame_needs_emit(audio_frames.back());
-	// if (frame_needs_emit(audio_frames.back())) {
-	// 	emit_frames();
-	// }
 }
 
 bool AvPlayer::frame_needs_emit(const AvBaseFrame &f) const {
@@ -598,6 +593,7 @@ void AvPlayer::stop() {
 }
 
 void AvPlayer::fill_buffers() {
+	MEASURE;
 	// read new frames
 	// if the video has not yet started, the process is simple, fill up the  buffer
 	// if (!has_started()) {
@@ -622,6 +618,7 @@ void AvPlayer::fill_buffers() {
 }
 
 void AvPlayer::emit_frames() {
+	MEASURE;
 	// only start the clock if we have some frames
 	if (video_frames.size() || audio_frames.size()) {
 		if (!has_started()) {
@@ -651,7 +648,11 @@ void AvPlayer::emit_frames() {
 			}
 		}
 		if (frame_drops > 0) {
-			log.verbose("dropped {} video frames", frame_drops);
+			static std::atomic_int frame_drop_counter = 0;
+			if (frame_drop_counter % 30 == 0) {
+				log.warn("dropped {} video frames", frame_drops);
+			}
+			++frame_drop_counter;
 		}
 		if (result) {
 			emit_video_frame(result.value());
@@ -677,6 +678,7 @@ void AvPlayer::process() {
 	if (!ready_for_playback) {
 		return;
 	}
+
 	emit_frames();
 	fill_buffers();
 }

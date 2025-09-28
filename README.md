@@ -1,4 +1,4 @@
-## Build
+## Godot Version
 
 ### build with system ffmpeg
 
@@ -10,9 +10,11 @@ libva-dev libxcb-dri3-dev libvdpau-dev libdrm-dev libx11-xcb-dev libvpx-dev libd
 libaom-dev libbz2-dev libnuma-dev libfdk-aac-dev libvorbis-dev libbz2-dev libglx-dev libgl1-mesa-dev
 ```
 
+### Build with system ffmpeg
+
 ```
-mkdir build
-cd build
+mkdir build-system
+cd build-system
 cmake -DUSE_SYSTEM_FFMPEG=ON ..
 cmake --build . --target godot-video
 ```
@@ -20,23 +22,24 @@ cmake --build . --target godot-video
 ### Build with integrated ffmpeg
 
 ```
-mkdir build
-cd build
+mkdir build-integrated
+cd build-integrated
 cmake ..
 cmake --build . --target libx264 libx265 zlib xz bzip2 ffnvenc ffmpeg
 cmake --build . --target godot-video
 ```
 
-## Build for patched godot with vulkan video
+### Build for godot with vulkan video extensions enabled
+**currently not working and only in the archive**
 ```
-mkdir build
-cd build
+mkdir build-vkvideo
+cd build-vkvideo
 cmake -DUSE_GODOT_PATCHED=ON ..
 cmake --build . --target libx264 libx265 zlib xz bzip2 ffnvenc ffmpeg
 cmake --build . --target godot-video
 ```
 
-On intel vulkan video api is behind a flag. launch with 
+On intel vulkan video api is behind a flag. Launch with
 
 ```
 ANV_VIDEO_DECODE=1 ./godot.linuxbsd.editor.x86_64 --main-pack something.pck
@@ -46,3 +49,7 @@ ANV_VIDEO_DECODE=1 ./godot.linuxbsd.editor.x86_64 --main-pack something.pck
 
 library is linked against vaapi 2.2, older ubuntu version need the intel ppa
 ```sudo add-apt-repository -y ppa:kobuk-team/intel-graphics```
+
+
+## SDL TODO
+
