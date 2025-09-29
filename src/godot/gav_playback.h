@@ -22,7 +22,6 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 	GDCLASS(GAVPlayback, VideoStreamPlayback)
 	static void _bind_methods();
 
-
 	GAVLog log = GAVLog("GAVPlayback");
 	std::shared_ptr<AvPlayer> av;
 	std::shared_ptr<GAVTexture> texture;
@@ -33,6 +32,7 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 	std::atomic_bool video_finished;
 	std::mutex audio_mutex;
 	std::mutex video_mutex;
+	std::atomic_bool keep_processing = false;
 	std::optional<AvVideoFrame> video_frame_thread;
 	std::deque<AvAudioFrame> audio_frames_thread;
 	godot::Ref<godot::ImageTexture> thumb_texture;

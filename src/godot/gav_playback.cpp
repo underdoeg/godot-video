@@ -38,6 +38,8 @@ bool GAVPlayback::load(const String &p_path) {
 		thread.join();
 	}
 
+	keep_processing = true;
+
 	auto path_global = ProjectSettings::get_singleton()->globalize_path(p_path);
 	auto splits = path_global.split("/");
 	log.set_name(splits[splits.size() - 1]);
@@ -165,12 +167,14 @@ void GAVPlayback::_stop() {
 void GAVPlayback::_play() {
 	if (!av)
 		return;
+	keep_processing = true;
 	av->play();
 }
 
 void GAVPlayback::_set_paused(bool p_paused) {
 	if (!av)
 		return;
+	keep_processing = true;
 	av->set_paused(p_paused);
 }
 
@@ -181,13 +185,18 @@ bool GAVPlayback::_is_paused() const {
 }
 
 bool GAVPlayback::_is_playing() const {
-	if (!av)
-		return false;
-	return av->is_playing();
+	// godot video player is a bit weird here imho. is playing should always be true (except on stop), otherwise _update is not being called
+	// if (!av)
+	// 	return false;
+	// return av->is_playing();
+	return keep_processing;
 }
 
 double GAVPlayback::_get_length() const {
-	return 0;
+	if (!av) {
+		return 0;
+	}
+	return av->duration_seconds();
 }
 
 double GAVPlayback::_get_playback_position() const {
@@ -223,6 +232,7 @@ void GAVPlayback::_update(double p_delta) {
 	if (video_finished) {
 		callbacks.ended();
 		video_finished = false;
+		keep_processing = false;
 	}
 
 	if (threaded) {

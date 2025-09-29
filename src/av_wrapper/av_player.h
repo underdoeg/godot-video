@@ -215,12 +215,9 @@ public:
 	void play();
 	void set_paused(bool state);
 	[[nodiscard]] bool is_playing() const {
-		if (!playing) {
+		if (!playing || paused) {
 			return false;
 		}
-
-		// if (paused)
-		// 	return false;
 		return true;
 	}
 	[[nodiscard]] bool is_paused() const {
@@ -229,7 +226,9 @@ public:
 	void shutdown() {
 		add_command(SHUTDOWN);
 	}
-
+	double duration_seconds() const {
+		return duration_millis / 1000.0;
+	}
 	bool load(const AvPlayerLoadSettings &settings = {});
 
 	void fill_buffers();
