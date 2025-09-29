@@ -27,9 +27,9 @@ void init() {
 	{
 		const auto key = p(k_threads);
 		if (!ps->has_setting(key)) {
-			ps->set_setting(key, false);
+			ps->set_setting(key, true);
 		}
-		ps->set_initial_value(key, false);
+		ps->set_initial_value(key, true);
 		Dictionary info;
 		info.set("name", key);
 		info.set("type", Variant::BOOL);

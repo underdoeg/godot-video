@@ -52,8 +52,12 @@ AvPlayer::~AvPlayer() {
 void AvPlayer::reset() {
 	log.verbose("reset begin");
 
-	audio_frames.clear();
+	paused = false;
+	start_time.reset();
 	video_frames.clear();
+	audio_frames.clear();
+	ready_for_playback = false;
+	is_eof = false;
 
 	codecs.release(video_codec);
 	video_codec = nullptr;
@@ -70,10 +74,12 @@ void AvPlayer::reset() {
 	filepath_loaded.reset();
 	video_stream_index.reset();
 	audio_stream_index.reset();
+
 	video_stream = nullptr;
 	audio_stream = nullptr;
 	file_info = {};
-	events = {};
+	waiting_for_init = false;
+	num_commands = 0;
 
 	log.verbose("reset end");
 }
@@ -91,15 +97,18 @@ void AvPlayer::fill_file_info() {
 		log.info("[Audio] num channels: {}, sample rate: {}, codec: {}, sample format: {}",
 				file_info.audio.num_channels, file_info.audio.sample_rate, file_info.audio.codec_name, audio_stream->codecpar->format);
 	}
-	if (events.file_info) {
-		events.file_info(file_info);
+	if (load_settings.events.file_info) {
+		load_settings.events.file_info(file_info);
 	}
 }
 
 bool AvPlayer::load(const AvPlayerLoadSettings &settings) {
 	reset();
 
-	events = settings.events;
+	bool is_path_new = load_settings.file_path != settings.file_path;
+
+	load_settings = settings;
+
 	output_settings_requested = settings.output;
 	output_settings = output_settings_requested;
 	std::filesystem::path file_path = settings.file_path;
@@ -153,7 +162,8 @@ bool AvPlayer::load(const AvPlayerLoadSettings &settings) {
 	}
 
 	//
-	fill_file_info();
+	if (is_path_new)
+		fill_file_info();
 
 	///////
 	const auto res = init();
@@ -162,19 +172,21 @@ bool AvPlayer::load(const AvPlayerLoadSettings &settings) {
 		return false;
 	}
 
+	playing = true;
+
 	filepath_loaded = file_path;
-	log.info("file loaded {}", file_path.string());
 
 	if (res == AvCodecs::AGAIN) {
 		log.info("will try to init again");
 		waiting_for_init = true;
+	} else {
+		log.info("file loaded {}", file_path.string());
 	}
 
 	return true;
 }
 
 AvCodecs::ResultType AvPlayer::init() {
-
 	log.verbose("init begin");
 
 	auto res = init_video();
@@ -371,7 +383,7 @@ void AvPlayer::emit_video_frame(const AvVideoFrame &frame) {
 	MEASURE;
 	// log.info("emit_video_frame");
 	//  only emit software frame buffers for now
-	if (!events.video_frame) {
+	if (!load_settings.events.video_frame) {
 		log.error("no video frame event listener");
 		return;
 	}
@@ -386,9 +398,9 @@ void AvPlayer::emit_video_frame(const AvVideoFrame &frame) {
 			log.error("Could not transfer_data from hw to sw");
 		}
 		target.type = SW_BUFFER;
-		events.video_frame(target);
+		load_settings.events.video_frame(target);
 	} else {
-		events.video_frame(frame);
+		load_settings.events.video_frame(frame);
 	}
 	av_frame_unref(frame.frame.get());
 	video_frames_to_reuse.push_back(frame.frame);
@@ -457,7 +469,7 @@ AvCodecContextPtr AvPlayer::create_audio_codec_context() {
 void AvPlayer::emit_audio_frame(const AvAudioFrame &frame) {
 	MEASURE;
 	// log.info("emit_audio_frame");
-	if (!events.audio_frame) {
+	if (!load_settings.events.audio_frame) {
 		log.error("no audio frame event listener");
 		return;
 	}
@@ -482,7 +494,7 @@ void AvPlayer::emit_audio_frame(const AvAudioFrame &frame) {
 			static_cast<AVSampleFormat>(target.frame->format),
 			0);
 
-	events.audio_frame(target);
+	load_settings.events.audio_frame(target);
 	av_frame_unref(target.frame.get());
 	audio_frames_to_reuse.push_back(target.frame);
 }
@@ -492,9 +504,8 @@ bool AvPlayer::read_next_frames() {
 
 	const auto ret = av_read_frame(fmt_ctx, packet.get());
 	if (ret == AVERROR_EOF) {
-		log.info("eof");
 		is_eof = true;
-		return true;
+		return false;
 	}
 	if (!ff_ok(ret)) {
 		log.error("Could not read frame");
@@ -567,11 +578,24 @@ bool AvPlayer::audio_frame_received(const AvFramePtr &frame) {
 bool AvPlayer::frame_needs_emit(const AvBaseFrame &f) const {
 	if (!has_started())
 		return false;
-	return start_time.value() + f.millis <= Clock::now();
+	auto frame_time = start_time.value() + f.millis;
+	// auto due_in = frame_time - Clock::now();
+	return frame_time < Clock::now() + std::chrono::milliseconds(1000 / 60);
 }
 
 void AvPlayer::stop() {
-	reset();
+	add_command(STOP);
+}
+void AvPlayer::play() {
+	add_command(PLAY);
+}
+void AvPlayer::set_paused(bool state) {
+	log.info("set paused {}", state);
+	if (state) {
+		add_command(PAUSE);
+	} else {
+		play();
+	}
 }
 
 void AvPlayer::fill_buffers() {
@@ -593,7 +617,7 @@ void AvPlayer::fill_buffers() {
 	if (!is_eof) {
 		const auto buff_size = buffer_size();
 		if (buff_size < output_settings.frame_buffer_size) {
-			log.warn("buffer underrun: {} / {}", buff_size, output_settings.frame_buffer_size);
+			// log.warn("buffer underrun: {} / {}", buff_size, output_settings.frame_buffer_size);
 		}
 	}
 	// }
@@ -605,6 +629,7 @@ void AvPlayer::emit_frames() {
 	if (video_frames.size() || audio_frames.size()) {
 		if (!has_started()) {
 			start_time = Clock::now();
+			log.verbose("start time set to: {}", start_time.value());
 		}
 
 		// first handle audio
@@ -641,26 +666,107 @@ void AvPlayer::emit_frames() {
 		}
 	} else if (is_playing()) {
 		if (is_eof) {
+			log.info("video is done");
 			// video is done, and all frames were submitted
-			if (events.end) {
-				events.end();
+			playing = false;
+			paused = false;
+			if (load_settings.events.end) {
+				log.verbose("call end callback");
+				load_settings.events.end();
 			}
 		}
 	}
 }
 
+void AvPlayer::add_command(Command command) {
+	switch (command) {
+		case STOP:
+			log.verbose("add_command: STOP");
+			break;
+		case PLAY:
+			log.verbose("add_command: PLAY");
+			break;
+		case PAUSE:
+			log.verbose("add_command: PAUSE");
+			break;
+		case SHUTDOWN:
+			log.verbose("add_command: SHUTDOWN");
+			break;
+	}
+	std::unique_lock lock(command_queue_mutex);
+	if (num_commands >= command_queue.size()) {
+		log.warn("cannot add new command, command queue is full");
+		return;
+	}
+	command_queue[num_commands] = command;
+	num_commands++;
+}
+
+void AvPlayer::handle_commands() {
+	MEASURE;
+
+	command_queue_mutex.lock();
+	const auto commands = command_queue;
+	const auto count = num_commands;
+	num_commands = 0;
+	command_queue_mutex.unlock();
+
+	for (int i = 0; i < count; i++) {
+		auto cmd = commands[i];
+		switch (cmd) {
+			case STOP:
+				log.info("stop");
+				reset();
+				break;
+			case PAUSE:
+				if (!playing) {
+					log.warn("cannot pause, video is not playing");
+					break;
+				}
+				log.info("pause");
+				if (!paused) {
+					pause_time = Clock::now();
+				}
+				paused = true;
+				break;
+			case PLAY:
+				log.info("play");
+				if (!filepath_loaded && !load_settings.file_path.empty() || is_eof) {
+					log.info("file is not loaded. try to load {}", load_settings.file_path);
+					load(load_settings);
+				} else if (paused && start_time.has_value()) {
+					auto duration = (Clock::now() - pause_time);
+					log.verbose("pause lasted {} seconds", std::chrono::duration_cast<std::chrono::seconds>(duration).count());
+					start_time = start_time.value() + duration;
+				}
+				paused = false;
+				playing = true;
+				break;
+			case SHUTDOWN:
+				log.info("shutdown");
+				reset();
+				load_settings = {};
+		}
+	}
+}
+
 void AvPlayer::process() {
+	MEASURE;
+
+	handle_commands();
+
 	if (waiting_for_init) {
 		init();
 	}
 
+	// log.info("ready_for_playback: {}, playing: {}, paused: {}", ready_for_playback.load(), playing.load(), paused.load());
+
+	if (!ready_for_playback)
+		return;
 	if (!playing)
 		return;
-
-	if (!ready_for_playback) {
+	if (paused)
 		return;
-	}
-
 	emit_frames();
 	fill_buffers();
 }

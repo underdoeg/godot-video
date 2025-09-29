@@ -9,6 +9,7 @@
 #include <format>
 #include <functional>
 #include <iostream>
+#include <mutex>
 #include <utility>
 
 extern "C" {
@@ -114,8 +115,17 @@ struct AvPlayerLoadSettings {
 };
 
 class AvPlayer {
+public:
 	using Clock = std::chrono::high_resolution_clock;
 
+	enum Command {
+		STOP = 0,
+		PLAY = 1,
+		PAUSE = 2,
+		SHUTDOWN = 3,
+	};
+
+private:
 	[[nodiscard]] bool ff_ok(int result, const std::string &prepend = "") const;
 
 	std::deque<AvFramePtr> video_frames_to_reuse, audio_frames_to_reuse;
@@ -137,8 +147,8 @@ class AvPlayer {
 	std::optional<std::filesystem::path> filepath_loaded;
 
 	AvFileInfo file_info;
-	AvPlayerEvents events;
 
+	AvPlayerLoadSettings load_settings;
 	AvWrapperOutputSettings output_settings, output_settings_requested;
 
 	std::deque<AvVideoFrame> video_frames;
@@ -169,10 +179,11 @@ class AvPlayer {
 	std::atomic_bool playing = false;
 	std::atomic_bool paused = false;
 	std::atomic_int64_t duration_millis = 0;
-	bool is_eof = false;
+	std::atomic_bool is_eof = false;
 
 	std::atomic_bool ready_for_playback = false;
 	std::optional<Clock::time_point> start_time = std::nullopt;
+	Clock::time_point pause_time;
 
 	[[nodiscard]] bool has_started() const {
 		return start_time.has_value();
@@ -185,6 +196,12 @@ class AvPlayer {
 		return video_frames.size();
 	}
 
+	std::array<Command, 16> command_queue;
+	int num_commands = 0;
+	std::mutex command_queue_mutex;
+	void handle_commands();
+	void add_command(Command command);
+
 public:
 	static AvCodecs codecs;
 	AvWrapperLog log;
@@ -195,19 +212,23 @@ public:
 	~AvPlayer();
 
 	void stop();
-	void play() {
-		playing = true;
-		paused = false;
-	}
-	void set_paused(bool state) {
-		paused = state;
-	}
+	void play();
+	void set_paused(bool state);
 	[[nodiscard]] bool is_playing() const {
-		return playing && !paused;
+		if (!playing) {
+			return false;
+		}
+
+		// if (paused)
+		// 	return false;
+		return true;
 	}
 	[[nodiscard]] bool is_paused() const {
 		return playing && paused;
 	};
+	void shutdown() {
+		add_command(SHUTDOWN);
+	}
 
 	bool load(const AvPlayerLoadSettings &settings = {});
 

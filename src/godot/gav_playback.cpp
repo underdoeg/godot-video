@@ -22,6 +22,10 @@ GAVPlayback::GAVPlayback() {
 	AvPlayer::codecs.set_reusing_enabled(gav_settings::reuse_decoders());
 }
 GAVPlayback::~GAVPlayback() {
+	if (av) {
+		log.info("destruct");
+		av->shutdown();
+	}
 	thread_keep_running = false;
 	if (thread.joinable()) {
 		thread.join();
@@ -29,6 +33,7 @@ GAVPlayback::~GAVPlayback() {
 }
 
 bool GAVPlayback::load(const String &p_path) {
+	thread_keep_running = false;
 	if (thread.joinable()) {
 		thread.join();
 	}
@@ -56,6 +61,11 @@ bool GAVPlayback::load(const String &p_path) {
 	AvPlayerLoadSettings settings;
 	settings.file_path = path_global.ascii().ptr();
 	settings.output.frame_buffer_size = gav_settings::frame_buffer_size();
+
+	settings.events.end = [&]() {
+		log.verbose("end callback");
+		video_finished = true;
+	};
 
 	bool result = false;
 	if (threaded) {
@@ -105,6 +115,7 @@ bool GAVPlayback::load(const String &p_path) {
 		settings.events.video_frame = std::bind(&GAVPlayback::on_video_frame, this, std::placeholders::_1);
 		settings.events.audio_frame = std::bind(&GAVPlayback::on_audio_frame, this, std::placeholders::_1);
 		settings.events.file_info = std::bind(&GAVPlayback::set_file_info, this, std::placeholders::_1);
+
 		result = av->load(settings);
 	}
 
@@ -143,12 +154,12 @@ void GAVPlayback::_stop() {
 	if (!av)
 		return;
 
-	if (threaded) {
-		thread_keep_running = false;
-		if (thread.joinable()) {
-			thread.join();
-		}
-	}
+	// if (threaded) {
+	// 	thread_keep_running = false;
+	// 	if (thread.joinable()) {
+	// 		thread.join();
+	// 	}
+	// }
 	av->stop();
 }
 void GAVPlayback::_play() {
@@ -158,6 +169,9 @@ void GAVPlayback::_play() {
 }
 
 void GAVPlayback::_set_paused(bool p_paused) {
+	if (!av)
+		return;
+	av->set_paused(p_paused);
 }
 
 bool GAVPlayback::_is_paused() const {
@@ -206,6 +220,10 @@ int32_t GAVPlayback::_get_mix_rate() const {
 
 void GAVPlayback::_update(double p_delta) {
 	MEASURE_N("MAIN");
+	if (video_finished) {
+		callbacks.ended();
+		video_finished = false;
+	}
 
 	if (threaded) {
 		std::optional<AvVideoFrame> frame;
@@ -215,16 +233,17 @@ void GAVPlayback::_update(double p_delta) {
 				frame = video_frame_thread.value();
 				video_frame_thread.reset();
 			}
-			if (frame) {
-				on_video_frame(frame.value());
-			}
+		}
+		if (frame) {
+			on_video_frame(frame.value());
 		}
 		{
 			// TODO: audio
 		}
 	} else {
-		if (!av)
+		if (!av) {
 			return;
+		}
 		av->process();
 	}
 }

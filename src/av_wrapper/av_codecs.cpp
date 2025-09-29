@@ -52,6 +52,7 @@ AvCodecs::Result AvCodecs::get_or_create(AVStream *stream, const std::function<A
 		// scoped locking
 		std::unique_lock lock(mutex);
 		if (auto codec = find_codec()) {
+			printf("reuse codec \n");
 			return { codec, OK };
 		}
 	}

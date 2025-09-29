@@ -66,7 +66,7 @@ func _input(event):
 				%video_tex2.texture = %video.get_video_texture()
 			if event.keycode == KEY_SPACE:
 				if %video.is_playing():
-					%video.pause()
+					%video.set_paused(true)
 				else:
 					%video.play()
 			if event.keycode == KEY_P:
@@ -75,6 +75,8 @@ func _input(event):
 				load_many()
 			if event.keycode == KEY_S:
 				if %video.is_playing():
+					print("video is playing, send stop")
 					%video.stop()
 				else:
+					print("video is not playing, send play")
 					%video.play()

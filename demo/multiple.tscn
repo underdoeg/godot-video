@@ -1,7 +1,7 @@
 [gd_scene load_steps=3 format=3 uid="uid://dh0oj81pufivs"]
 
 [ext_resource type="Script" uid="uid://clmfltu5op357" path="res://multiple.gd" id="1_hsxc6"]
-[ext_resource type="VideoStream" uid="uid://dua3adr6ooe7w" path="res://testvideo_2160x3840_30_0001-0250_t1.mp4" id="2_7m6c3"]
+[ext_resource type="VideoStream" uid="uid://g7m1x0s07r0" path="res://ST_UHD_60p_H264_Gitter_Kreise_Ton_5_1.mp4" id="2_hsxc6"]
 
 [node name="Control" type="Control"]
 layout_mode = 3
@@ -28,7 +28,7 @@ unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
-stream = ExtResource("2_7m6c3")
+stream = ExtResource("2_hsxc6")
 autoplay = true
 expand = true
 loop = true

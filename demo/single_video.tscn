@@ -1,7 +1,7 @@
 [gd_scene load_steps=3 format=3 uid="uid://b568gxnsliogt"]
 
 [ext_resource type="Script" uid="uid://dcj2ph8clyi0n" path="res://single_video.gd" id="1_phvak"]
-[ext_resource type="VideoStream" uid="uid://c6eu1oex8vmg7" path="res://ST_UHD_60p_H265_Gitter_Kreise_Ton_5_1.mp4" id="2_phvak"]
+[ext_resource type="VideoStream" uid="uid://v67vx7yc1rtn" path="res://4k_h264_30p_trimmed.mp4" id="2_phvak"]
 
 [node name="SingleVideo" type="ColorRect"]
 anchors_preset = 15
@@ -12,7 +12,7 @@ grow_vertical = 2
 color = Color(0, 0, 0, 1)
 script = ExtResource("1_phvak")
 
-[node name="VideoStreamPlayer" type="VideoStreamPlayer" parent="."]
+[node name="player" type="VideoStreamPlayer" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
