@@ -58,8 +58,13 @@ AvPacketPtr av_packet_ptr() {
 		}
 	};
 }
+AvCodecContextPtr avcodec_context_ptr(const AVCodec *decoder) {
+	return { avcodec_alloc_context3(decoder), [](auto f) {
+				avcodec_free_context(&f);
+			} };
+}
 
-std::chrono::milliseconds av_get_frame_millis(const AvFramePtr &frame, const AVCodecContext *codec) {
+std::chrono::milliseconds av_get_frame_millis(const AvFramePtr &frame, const AvCodecContextPtr codec) {
 	auto pts = static_cast<double>(frame->best_effort_timestamp);
 	pts *= av_q2d(codec->time_base);
 	auto seconds = std::chrono::duration<double>(pts);

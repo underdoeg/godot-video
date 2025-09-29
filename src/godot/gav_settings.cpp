@@ -11,20 +11,21 @@ using namespace godot;
 
 namespace gav_settings {
 
-auto prefix = "gav_player";
-auto threads = "use_threads";
-auto verbose = "verbose_logging";
+auto k_prefix = "gav_player";
+auto k_threads = "use_threads";
+auto k_verbose = "verbose_logging";
 auto k_frame_buffer_size = "frame_buffer_size";
+auto k_reuse_decoders = "reuse_decoders";
 
 inline godot::String p(const String &str) {
-	return prefix + String("/") + str;
+	return k_prefix + String("/") + str;
 }
 
 void init() {
 	auto ps = ProjectSettings::get_singleton();
 
 	{
-		const auto key = p(threads);
+		const auto key = p(k_threads);
 		if (!ps->has_setting(key)) {
 			ps->set_setting(key, false);
 		}
@@ -37,7 +38,7 @@ void init() {
 	}
 
 	{
-		const auto key = p(verbose);
+		const auto key = p(k_verbose);
 		if (!ps->has_setting(key)) {
 			ps->set_setting(key, false);
 		}
@@ -61,15 +62,33 @@ void init() {
 		ProjectSettings::get_singleton()->add_property_info(info);
 		ps->set_as_basic(key, true);
 	}
+
+	{
+		const auto key = p(k_reuse_decoders);
+		if (!ps->has_setting(key)) {
+			ps->set_setting(key, true);
+		}
+		ps->set_initial_value(key, true);
+		Dictionary info;
+		info.set("name", key);
+		info.set("type", Variant::BOOL);
+		PropertyInfo pino;
+		ProjectSettings::get_singleton()->add_property_info(info);
+		ps->set_as_basic(key, true);
+	}
 }
 bool use_threads() {
-	return ProjectSettings::get_singleton()->get_setting(p(threads), false);
+	return ProjectSettings::get_singleton()->get_setting(p(k_threads), false);
 }
 bool verbose_logging() {
-	return ProjectSettings::get_singleton()->get_setting(p(verbose), false);
+	return ProjectSettings::get_singleton()->get_setting(p(k_verbose), false);
 }
-// int frame_buffer_size() {
-// 	return ProjectSettings::get_singleton()->get_setting(p(k_frame_buffer_size), 10);
-// }
+int frame_buffer_size() {
+	return ProjectSettings::get_singleton()->get_setting(p(k_frame_buffer_size), 10);
+}
+
+bool reuse_decoders() {
+	return ProjectSettings::get_singleton()->get_setting(p(k_reuse_decoders), true);
+}
 
 } //namespace gav_settings

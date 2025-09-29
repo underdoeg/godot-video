@@ -1,15 +1,14 @@
 #include "gav_playback.h"
 #include "gav_settings.h"
 
-
 #include <condition_variable>
 #include <filesystem>
 
-#include <godot_cpp/classes/rendering_server.hpp>
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/image.hpp>
 #include <godot_cpp/classes/image_texture.hpp>
 #include <godot_cpp/classes/project_settings.hpp>
+#include <godot_cpp/classes/rendering_server.hpp>
 
 using namespace godot;
 
@@ -20,9 +19,7 @@ GAVPlayback::GAVPlayback() {
 	if (gav_settings::verbose_logging()) {
 		log.set_level(GAVLog::VERBOSE);
 	}
-	// if (gav_settings::use_threads()) {
-	// 	log.warn("threaded video playback does not work yet");
-	// }
+	AvPlayer::codecs.set_reusing_enabled(gav_settings::reuse_decoders());
 }
 GAVPlayback::~GAVPlayback() {
 	thread_keep_running = false;
@@ -32,7 +29,6 @@ GAVPlayback::~GAVPlayback() {
 }
 
 bool GAVPlayback::load(const String &p_path) {
-
 	if (thread.joinable()) {
 		thread.join();
 	}
@@ -41,7 +37,6 @@ bool GAVPlayback::load(const String &p_path) {
 	auto splits = path_global.split("/");
 	log.set_name(splits[splits.size() - 1]);
 
-
 	if (Engine::get_singleton()->is_editor_hint()) {
 		auto thumb_path = av_thumbnail_path(path_global.ascii().ptr());
 		auto img = Image::load_from_file(thumb_path.c_str());
@@ -49,7 +44,6 @@ bool GAVPlayback::load(const String &p_path) {
 		thumb_texture = ImageTexture::create_from_image(img);
 		return false;
 	}
-
 
 	// create av playback
 	av = std::make_shared<AvPlayer>(AvWrapperLog{
@@ -61,8 +55,7 @@ bool GAVPlayback::load(const String &p_path) {
 
 	AvPlayerLoadSettings settings;
 	settings.file_path = path_global.ascii().ptr();
-
-	// settings.output.frame_buffer_size = gav_settings::frame_buffer_size();
+	settings.output.frame_buffer_size = gav_settings::frame_buffer_size();
 
 	bool result = false;
 	if (threaded) {

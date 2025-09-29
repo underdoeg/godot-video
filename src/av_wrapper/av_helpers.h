@@ -4,7 +4,6 @@
 #include <memory>
 #include <string>
 
-
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavcodec/packet.h>
@@ -21,7 +20,10 @@ AvFramePtr av_frame_clone(AvFramePtr src, AvFramePtr dst = av_frame_ptr());
 using AvPacketPtr = std::shared_ptr<AVPacket>;
 AvPacketPtr av_packet_ptr();
 
-std::chrono::milliseconds av_get_frame_millis(const AvFramePtr &frame, const AVCodecContext *codec);
+using AvCodecContextPtr = std::shared_ptr<AVCodecContext>;
+AvCodecContextPtr avcodec_context_ptr(const AVCodec *decoder);
+
+std::chrono::milliseconds av_get_frame_millis(const AvFramePtr &frame, AvCodecContextPtr codec);
 
 std::string av_thumbnail_path(const std::string &video_path);
 

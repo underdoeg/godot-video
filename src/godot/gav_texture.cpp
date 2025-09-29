@@ -23,6 +23,15 @@ GAVTexture::GAVTexture(godot::RenderingDevice *rd) :
 		main_rd(rd), conversion_rd(rd) {
 }
 GAVTexture::~GAVTexture() {
+	if (conversion_pipeline.is_valid()) {
+		conversion_rd->free_rid(conversion_pipeline);
+	}
+	if (texture_rid.is_valid()) {
+		conversion_rd->free_rid(texture_rid);
+	}
+	for (const auto t : plane_textures) {
+		conversion_rd->free_rid(t);
+	}
 }
 
 bool GAVTexture::setup(const AvVideoInfo &_info) {

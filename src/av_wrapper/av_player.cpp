@@ -4,6 +4,7 @@
 
 #include "av_wrapper/av_player.h"
 
+#include "av_codecs.h"
 #include "av_helpers.h"
 #include "godot_cpp/variant/utility_functions.hpp"
 
@@ -18,6 +19,8 @@ extern "C" {
 #include <libavutil/pixdesc.h>
 }
 
+AvCodecs AvPlayer::codecs;
+
 AvVideoFrame AvVideoFrame::copy(const AvFramePtr &av_frame) const {
 	AvVideoFrame copy = *this;
 	copy.frame = av_frame_clone(frame, av_frame);
@@ -28,113 +31,6 @@ AvAudioFrame AvAudioFrame::copy(const AvFramePtr &av_frame) const {
 	copy.frame = av_frame_clone(frame, av_frame);
 	return copy;
 }
-
-constexpr int max_players = 24;
-static std::atomic_int num_video_codecs = 0;
-
-constexpr bool reusing_enabled = true; // does not work yet
-
-struct ReuseCodecInfo {
-	AVCodecID id;
-	int width;
-	int height;
-	bool operator==(const ReuseCodecInfo &other) const {
-		// printf("=============== compare %d==%d, %d==%d, %d==%d", id, other.id, width, other.width, height, other.height);
-		return id == other.id && width == other.width && height == other.height;
-	}
-};
-//
-// template <>
-// struct std::hash<ReuseCodecInfo> {
-// 	std::size_t operator()(const ReuseCodecInfo &k) const {
-// 		using std::hash;
-// 		using std::size_t;
-// 		using std::string;
-// 		return ((hash<int>()(k.id) ^ (hash<int>()(k.width) << 1)) >> 1) ^ (hash<int>()(k.height) << 1);
-// 	}
-// };
-
-static std::mutex cached_codecs_mtx;
-// static std::unordered_map<ReuseCodecInfo, std::deque<AVCodecContext *>> cached_codecs;
-static std::vector<std::pair<ReuseCodecInfo, AVCodecContext *>> cached_codecs_list;
-
-AVCodecContext *get_used_codec(AVStream* stream) {
-	if (!reusing_enabled)
-		return nullptr;
-	// printf("get codec from cache: %s\n", avcodec_get_name(id));
-	ReuseCodecInfo info = {
-		stream->codecpar->codec_id,
-		stream->codecpar->width,
-		stream->codecpar->height
-	};
-
-	printf("%d -- %d", info.width, info.height);
-
-	std::scoped_lock<std::mutex> lock(cached_codecs_mtx);
-	if (cached_codecs_list.empty()) {
-		return nullptr;
-	}
-	int index = -1;
-	for (size_t i = 0; i < cached_codecs_list.size(); i++) {
-		if (cached_codecs_list[i].first == info) {
-			index = i;
-			break;
-		}
-	}
-	if (index > 0) {
-		printf("-----------------------------------------------------------------------------------------------------\n");
-		auto ret = cached_codecs_list[index].second;
-		cached_codecs_list.erase(cached_codecs_list.begin() + index);
-		return ret;
-	}
-	return nullptr;
-
-	// auto ret = cached_codecs[id].front();
-	// cached_codecs[id].pop_front();
-	// return ret;
-}
-
-bool reuse_codec(AVCodecContext *codec) {
-	if (!reusing_enabled)
-		return false;
-
-	const ReuseCodecInfo info = {
-		codec->codec_id,
-		codec->width,
-		codec->height
-	};
-
-
-	avcodec_flush_buffers(codec);
-	std::scoped_lock<std::mutex> lock(cached_codecs_mtx);
-	cached_codecs_list.push_back({info, codec});
-	return true;
-}
-
-// static std::mutex cached_hw_devices_mtx;
-// static std::map<AVHWDeviceType, std::deque<AVBufferRef *>> cached_hw_devices;
-//
-// AVBufferRef *get_used_hw_device(const AVHWDeviceType type) {
-// 	if (!reusing_enabled)
-// 		return nullptr;
-// 	// printf("get device from cache: %s\n", av_hwdevice_get_type_name(type));
-// 	std::scoped_lock<std::mutex> lock(cached_hw_devices_mtx);
-// 	if (cached_hw_devices[type].empty()) {
-// 		return nullptr;
-// 	}
-// 	auto ret = cached_hw_devices[type].front();
-// 	cached_hw_devices[type].pop_front();
-// 	return ret;
-// }
-//
-// void reuse_hw_device(const AVHWDeviceType type, AVBufferRef *hw_device) {
-// 	if (!reusing_enabled)
-// 		return;
-//
-// 	// printf("add device to cache: %s\n", av_hwdevice_get_type_name(type));
-// 	std::scoped_lock<std::mutex> lock(cached_hw_devices_mtx);
-// 	cached_hw_devices[type].push_back(hw_device);
-// }
 
 bool AvPlayer::ff_ok(int result, const std::string &prepend) const {
 	if (result < 0) {
@@ -159,38 +55,16 @@ void AvPlayer::reset() {
 	audio_frames.clear();
 	video_frames.clear();
 
-	// if (video_hw_frames_ref) {
-	// 	av_buffer_unref(&video_hw_frames_ref);
-	// 	video_hw_frames_ref = nullptr;
-	// }
-
-	AVBufferRef *hw_device = nullptr;
-	if (video_codec) {
-		// if (reusing_enabled && video_codec->hw_device_ctx) {
-		// 	// reuse hw device types
-		// 	hw_device = video_codec->hw_device_ctx;
-		// 	video_codec->hw_device_ctx = nullptr;
-		// }
-		if (!reuse_codec(video_codec)) {
-			avcodec_free_context(&video_codec);
-			--num_video_codecs;
-		}
-	}
-
-	if (audio_codec) {
-		avcodec_free_context(&audio_codec);
-	}
+	codecs.release(video_codec);
+	video_codec = nullptr;
+	codecs.release(audio_codec);
+	audio_codec = nullptr;
 
 	if (fmt_ctx) {
 		avformat_close_input(&fmt_ctx);
 	}
 	video_codec = audio_codec = nullptr;
 	fmt_ctx = nullptr;
-
-	// if (reusing_enabled && hw_device) {
-	// 	reuse_hw_device(output_settings.video_hw_type, hw_device);
-	// 	// log.info("added {}", av_hwdevice_get_type_name(output_settings.video_hw_type));
-	// }
 
 	output_settings = {};
 	filepath_loaded.reset();
@@ -228,13 +102,14 @@ bool AvPlayer::load(const AvPlayerLoadSettings &settings) {
 	events = settings.events;
 	output_settings_requested = settings.output;
 	output_settings = output_settings_requested;
+	std::filesystem::path file_path = settings.file_path;
 
-	if (!std::filesystem::exists(settings.file_path)) {
-		log.error("File not found {}", settings.file_path);
+	if (!std::filesystem::exists(file_path)) {
+		log.error("File not found {}", file_path.string());
 		return false;
 	}
 
-	log.verbose("Begin loading of {}", settings.file_path);
+	log.verbose("Begin loading of {}", file_path.string());
 
 	AVDictionary *options = nullptr;
 	// av_dict_set(&options, "loglevel", "debug", 0);
@@ -281,74 +156,86 @@ bool AvPlayer::load(const AvPlayerLoadSettings &settings) {
 	fill_file_info();
 
 	///////
+	const auto res = init();
+	if (res == AvCodecs::ERROR) {
+		log.error("Error initializing");
+		return false;
+	}
 
-	filepath_loaded = settings.file_path;
-	log.info("file loaded {}", settings.file_path);
+	filepath_loaded = file_path;
+	log.info("file loaded {}", file_path.string());
 
-	// if (num_video_codecs < max_players) {
-		return init();
-	// }
-
-	log.info("too many open players {}, waiting with init untile they are closed", static_cast<int>(num_video_codecs));
-
-	waiting_for_init = true;
+	if (res == AvCodecs::AGAIN) {
+		log.info("will try to init again");
+		waiting_for_init = true;
+	}
 
 	return true;
 }
 
-bool AvPlayer::init() {
-	waiting_for_init = false;
-	++num_video_codecs;
-
-	log.verbose("number of players: {}", static_cast<int>(num_video_codecs));
+AvCodecs::ResultType AvPlayer::init() {
 
 	log.verbose("init begin");
 
-	if (!init_video()) {
+	auto res = init_video();
+	if (res == AvCodecs::AGAIN) {
+		log.warn("could not yet initialize video stream. will try again");
+		return res;
+	}
+	if (res != AvCodecs::OK) {
 		log.error("Could not initialize video stream");
-		return false;
+		return res;
 	}
 
 	if (audio_stream_index) {
-		if (!init_audio()) {
+		res = init_audio();
+		if (res != AvCodecs::OK) {
+			if (video_codec) {
+				video_codec.reset();
+			}
+			if (res == AvCodecs::AGAIN) {
+				log.warn("could not yet initialize video stream. will try again");
+				return res;
+			}
 			log.error("Could not initialize audio stream");
-			return false;
+			return res;
 		}
 	}
 
 	ready_for_playback = true;
+	waiting_for_init = false;
 	log.verbose("init complete");
-	return true;
+	return res;
 }
-bool AvPlayer::create_video_codec_context() {
+AvCodecContextPtr AvPlayer::create_video_codec_context() {
 	// setup the decoder
 	const AVCodec *decoder = avcodec_find_decoder(video_stream->codecpar->codec_id);
 	if (!decoder) {
 		log.error("Could not find videodecoder");
-		return false;
+		return {};
 	}
 
 	// create the video codec context
-	video_codec = avcodec_alloc_context3(decoder);
-	if (!video_codec) {
+	auto codec = avcodec_context_ptr(decoder);
+	if (!codec) {
 		log.error("Could not allocate video codec context");
-		return false;
+		return {};
 	}
 
-	if (!ff_ok(avcodec_parameters_to_context(video_codec, video_stream->codecpar))) {
+	if (!ff_ok(avcodec_parameters_to_context(codec.get(), video_stream->codecpar))) {
 		log.error("Could not set video codec params");
-		return false;
+		return {};
 	}
-	video_codec->time_base = video_stream->time_base;
+	codec->time_base = video_stream->time_base;
 
 	if (video_stream->codecpar->codec_id == AV_CODEC_ID_VVC) {
-		video_codec->strict_std_compliance = -2;
+		codec->strict_std_compliance = -2;
 
 		/* Enable threaded decoding, VVC decode is slow */
-		video_codec->thread_count = 4;
-		video_codec->thread_type = (FF_THREAD_FRAME | FF_THREAD_SLICE);
+		codec->thread_count = 4;
+		codec->thread_type = (FF_THREAD_FRAME | FF_THREAD_SLICE);
 	} else {
-		video_codec->thread_count = 1;
+		codec->thread_count = 1;
 	}
 
 	std::vector<const AVCodecHWConfig *> hw_configs;
@@ -366,7 +253,7 @@ bool AvPlayer::create_video_codec_context() {
 
 	if (hw_configs.empty()) {
 		log.error("no supported hw acceleration found");
-		return false;
+		return {};
 	}
 
 	AVBufferRef *hw_device = nullptr;
@@ -412,14 +299,14 @@ bool AvPlayer::create_video_codec_context() {
 
 	if (hw_device) {
 		log.verbose("allocate hw device");
-		video_hw_frames_ref = av_hwframe_ctx_alloc(hw_device);
+		auto video_hw_frames_ref = av_hwframe_ctx_alloc(hw_device);
 		output_settings.video_hw_enabled = true;
 
 		auto *ctx = reinterpret_cast<AVHWFramesContext *>(video_hw_frames_ref->data);
 		ctx->format = hw_config->pix_fmt;
-		ctx->width = video_codec->width;
-		ctx->height = video_codec->height;
-		ctx->sw_format = video_codec->sw_pix_fmt;
+		ctx->width = codec->width;
+		ctx->height = codec->height;
+		ctx->sw_format = codec->sw_pix_fmt;
 
 		// detect valid sw formats
 		AVHWFramesConstraints *hw_frames_const = av_hwdevice_get_hwframe_constraints(hw_device, nullptr);
@@ -436,53 +323,39 @@ bool AvPlayer::create_video_codec_context() {
 		if (!ff_ok(av_hwframe_ctx_init(video_hw_frames_ref))) {
 			log.error("Could not initialize hw frame");
 		} else {
-			video_codec->hw_device_ctx = hw_device;
-			video_codec->hw_frames_ctx = video_hw_frames_ref;
+			codec->hw_device_ctx = hw_device;
+			codec->hw_frames_ctx = video_hw_frames_ref;
 			// video_codec->pix_fmt = ctx;
 		}
 	}
 
-	if (!video_codec->hw_device_ctx || !video_codec->hw_frames_ctx->data) {
+	if (!codec->hw_device_ctx || !codec->hw_frames_ctx->data) {
 		output_settings.video_hw_enabled = false;
 		output_settings_requested.video_hw_type = AV_HWDEVICE_TYPE_NONE;
 		log.warn("could not allocate hw device, will use software decoder. this is going to be slow");
 	}
 
-	if (!ff_ok(avcodec_open2(video_codec, decoder, nullptr))) {
+	if (!ff_ok(avcodec_open2(codec.get(), decoder, nullptr))) {
 		log.error("Could not open video decoder");
-		return false;
+		return {};
 	}
-	return true;
+	return codec;
 }
 
-bool AvPlayer::init_video() {
+AvCodecs::ResultType AvPlayer::init_video() {
 	// file_info.video.codec = video_stream->codecpar->codec_type
 	log.verbose("begin init_video");
 	if (!video_stream) {
-		return false;
+		return AvCodecs::ERROR;
 	}
 
-	video_codec = get_used_codec(video_stream);
-	if (video_codec) {
-		log.verbose("reusing video codec from cache: {}", avcodec_get_name(video_stream->codecpar->codec_id));
-		// we need to set the codec parameters again
-		if (!ff_ok(avcodec_parameters_to_context(video_codec, video_stream->codecpar))) {
-			log.error("Could not set video codec parameters");
-			avcodec_free_context(&video_codec);
-			return false;
-		}
-		video_codec->time_base = video_stream->time_base;
-	} else {
-		if (!create_video_codec_context()) {
-			if (video_codec) {
-				avcodec_free_context(&video_codec);
-			}
-			return false;
-		}
+	const auto [codec, result] = codecs.get_or_create(video_stream, std::bind(&AvPlayer::create_video_codec_context, this));
+	if (result != AvCodecs::OK) {
+		return result;
 	}
-
+	video_codec = codec;
 	log.verbose("end init_video");
-	return true;
+	return AvCodecs::OK;
 }
 
 bool AvPlayer::video_frame_received(const AvFramePtr &frame) {
@@ -521,34 +394,16 @@ void AvPlayer::emit_video_frame(const AvVideoFrame &frame) {
 	video_frames_to_reuse.push_back(frame.frame);
 }
 
-bool AvPlayer::init_audio() {
+AvCodecs::ResultType AvPlayer::init_audio() {
 	log.verbose("begin init_audio");
 
-	// Set output format to stereo
-	const auto audio_decoder = avcodec_find_decoder(audio_stream->codecpar->codec_id);
-	if (!audio_decoder) {
-		log.error("Could not find audio decoder for codec {}", file_info.audio.codec_name);
-		return false;
+	const auto [codec, res] = codecs.get_or_create(audio_stream, std::bind(&AvPlayer::create_audio_codec_context, this));
+
+	if (res != AvCodecs::OK) {
+		return res;
 	}
 
-	audio_codec = avcodec_alloc_context3(audio_decoder);
-	if (!audio_codec) {
-		log.error("Could not allocate audio codec context for codec {}", file_info.audio.codec_name);
-		return false;
-	}
-
-	if (!ff_ok(avcodec_parameters_to_context(audio_codec, audio_stream->codecpar))) {
-		log.error("could not set audio_codec parameters");
-		return false;
-	}
-
-	audio_codec->pkt_timebase = audio_stream->time_base;
-	audio_codec->request_sample_fmt = output_settings_requested.audio_sample_fmt;
-
-	if (!ff_ok(avcodec_open2(audio_codec, audio_decoder, nullptr))) {
-		log.error("Could not open audio codec for codec {}", file_info.audio.codec_name);
-		return false;
-	}
+	audio_codec = codec;
 
 	output_settings.audio_sample_rate = output_settings_requested.audio_sample_rate > 0 ? output_settings_requested.audio_sample_rate : audio_codec->sample_rate;
 
@@ -562,12 +417,41 @@ bool AvPlayer::init_audio() {
 				0, nullptr);
 		if (!ff_ok(swr_init(audio_resampler))) {
 			log.error("Could not initialize audio resampler");
-			return false;
+			return AvCodecs::ERROR;
 		}
 	}
 
 	log.verbose("end init_audio");
-	return true;
+	return AvCodecs::OK;
+}
+
+AvCodecContextPtr AvPlayer::create_audio_codec_context() {
+	// Set output format to stereo
+	const auto audio_decoder = avcodec_find_decoder(audio_stream->codecpar->codec_id);
+	if (!audio_decoder) {
+		log.error("Could not find audio decoder for codec {}", file_info.audio.codec_name);
+		return {};
+	}
+
+	auto codec = avcodec_context_ptr(audio_decoder);
+	if (!codec) {
+		log.error("Could not allocate audio codec context for codec {}", file_info.audio.codec_name);
+		return {};
+	}
+
+	if (!ff_ok(avcodec_parameters_to_context(codec.get(), audio_stream->codecpar))) {
+		log.error("could not set audio_codec parameters");
+		return {};
+	}
+
+	codec->pkt_timebase = audio_stream->time_base;
+	codec->request_sample_fmt = output_settings_requested.audio_sample_fmt;
+
+	if (!ff_ok(avcodec_open2(codec.get(), audio_decoder, nullptr))) {
+		log.error("Could not open audio codec for codec {}", file_info.audio.codec_name);
+		return {};
+	}
+	return codec;
 }
 
 void AvPlayer::emit_audio_frame(const AvAudioFrame &frame) {
@@ -618,7 +502,7 @@ bool AvPlayer::read_next_frames() {
 	}
 
 	// get the correct codec context for the stream index
-	AVCodecContext *codec = nullptr;
+	AvCodecContextPtr codec;
 	bool is_audio = false;
 	if (packet->stream_index == video_stream_index.value()) {
 		codec = video_codec;
@@ -632,7 +516,7 @@ bool AvPlayer::read_next_frames() {
 		return false;
 	}
 
-	if (!ff_ok(avcodec_send_packet(codec, packet.get()), "avcodec_send_packet")) {
+	if (!ff_ok(avcodec_send_packet(codec.get(), packet.get()), "avcodec_send_packet")) {
 		return false;
 	}
 
@@ -652,7 +536,7 @@ bool AvPlayer::read_next_frames() {
 	bool frame_need_emit = false;
 	while (receive_res == 0) {
 		const auto frame = get_frame_ptr();
-		receive_res = avcodec_receive_frame(codec, frame.get());
+		receive_res = avcodec_receive_frame(codec.get(), frame.get());
 		if (receive_res == 0) {
 			if (frame_received(frame, packet->stream_index)) {
 				frame_need_emit = true;
@@ -766,7 +650,7 @@ void AvPlayer::emit_frames() {
 }
 
 void AvPlayer::process() {
-	if (waiting_for_init && num_video_codecs < max_players) {
+	if (waiting_for_init) {
 		init();
 	}
 

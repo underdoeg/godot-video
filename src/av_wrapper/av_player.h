@@ -1,5 +1,6 @@
 #pragma once
 
+#include "av_codecs.h"
 #include "av_helpers.h"
 
 #include <atomic>
@@ -80,12 +81,12 @@ struct AvBaseFrame {
 struct AvVideoFrame : AvBaseFrame {
 	AvVideoFrameType type = UNKNOWN;
 	AVColorSpace color_space = AVCOL_SPC_UNSPECIFIED;
-	[[nodiscard]] AvVideoFrame copy(const AvFramePtr &av_frame =av_frame_ptr()) const;
+	[[nodiscard]] AvVideoFrame copy(const AvFramePtr &av_frame = av_frame_ptr()) const;
 };
 
 struct AvAudioFrame : AvBaseFrame {
 	int byte_size = 0;
-	[[nodiscard]] AvAudioFrame copy(const AvFramePtr &av_frame =av_frame_ptr()) const;
+	[[nodiscard]] AvAudioFrame copy(const AvFramePtr &av_frame = av_frame_ptr()) const;
 };
 
 struct AvWrapperOutputSettings {
@@ -126,10 +127,10 @@ class AvPlayer {
 	AVStream *video_stream = nullptr;
 	AVStream *audio_stream = nullptr;
 
-	AVCodecContext *video_codec = nullptr;
-	AVCodecContext *audio_codec = nullptr;
+	AvCodecContextPtr video_codec = nullptr;
+	AvCodecContextPtr audio_codec = nullptr;
 
-	AVBufferRef *video_hw_frames_ref = nullptr;
+	// AVBufferRef *video_hw_frames_ref = nullptr;
 
 	SwrContext *audio_resampler = nullptr;
 
@@ -148,10 +149,11 @@ class AvPlayer {
 	void fill_file_info();
 
 	bool waiting_for_init = false;
-	bool init();
-	bool create_video_codec_context();
-	bool init_video();
-	bool init_audio();
+	AvCodecs::ResultType init();
+	AvCodecs::ResultType init_video();
+	AvCodecs::ResultType init_audio();
+	AvCodecContextPtr create_video_codec_context();
+	AvCodecContextPtr create_audio_codec_context();
 
 	// these methods return true if the new frames should be displayed immediately
 	bool read_next_frames();
@@ -159,13 +161,14 @@ class AvPlayer {
 	bool audio_frame_received(const AvFramePtr &frame);
 	bool video_frame_received(const AvFramePtr &frame);
 
-	bool frame_needs_emit(const AvBaseFrame &f) const;
+	[[nodiscard]] bool frame_needs_emit(const AvBaseFrame &f) const;
 	void emit_video_frame(const AvVideoFrame &frame);
 	void emit_audio_frame(const AvAudioFrame &frame);
 	void emit_frames();
 
 	std::atomic_bool playing = false;
 	std::atomic_bool paused = false;
+	std::atomic_int64_t duration_millis = 0;
 	bool is_eof = false;
 
 	std::atomic_bool ready_for_playback = false;
@@ -183,6 +186,7 @@ class AvPlayer {
 	}
 
 public:
+	static AvCodecs codecs;
 	AvWrapperLog log;
 
 	explicit AvPlayer(AvWrapperLog log = AvWrapperLog()) :
