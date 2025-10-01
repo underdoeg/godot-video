@@ -142,6 +142,7 @@ private:
 
 	// AVBufferRef *video_hw_frames_ref = nullptr;
 
+	std::atomic_int output_sample_rate = 0;
 	SwrContext *audio_resampler = nullptr;
 
 	std::optional<std::filesystem::path> filepath_loaded;
@@ -228,6 +229,9 @@ public:
 	}
 	double duration_seconds() const {
 		return duration_millis / 1000.0;
+	}
+	int sample_rate() {
+		return output_sample_rate;
 	}
 	bool load(const AvPlayerLoadSettings &settings = {});
 

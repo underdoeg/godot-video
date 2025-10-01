@@ -63,6 +63,7 @@ bool GAVPlayback::load(const String &p_path) {
 	AvPlayerLoadSettings settings;
 	settings.file_path = path_global.ascii().ptr();
 	settings.output.frame_buffer_size = gav_settings::frame_buffer_size();
+	// settings.output.audio_sample_rate = 48000;
 
 	settings.events.end = [&]() {
 		log.verbose("end callback");
@@ -114,9 +115,9 @@ bool GAVPlayback::load(const String &p_path) {
 			result = false;
 		}
 	} else {
-		settings.events.video_frame = std::bind(&GAVPlayback::on_video_frame, this, std::placeholders::_1);
-		settings.events.audio_frame = std::bind(&GAVPlayback::on_audio_frame, this, std::placeholders::_1);
-		settings.events.file_info = std::bind(&GAVPlayback::set_file_info, this, std::placeholders::_1);
+		settings.events.video_frame = [this](auto &frame) { on_video_frame(frame); };
+		settings.events.audio_frame = [this](auto &frame) { on_audio_frame(frame); };
+		settings.events.file_info = [this](auto &info) { set_file_info(info); };
 
 		result = av->load(settings);
 	}
@@ -128,6 +129,7 @@ bool GAVPlayback::load(const String &p_path) {
 }
 
 void GAVPlayback::set_file_info(const AvFileInfo &info) {
+	file_info = info;
 	if (!texture) {
 		texture = std::make_shared<GAVTexture>(RenderingServer::get_singleton()->get_rendering_device());
 	}
@@ -148,7 +150,6 @@ void GAVPlayback::on_video_frame(const AvVideoFrame &frame) const {
 void GAVPlayback::on_audio_frame(const AvAudioFrame &frame) {
 	audio_buffer.resize(frame.byte_size / sizeof(float));
 	memcpy(audio_buffer.ptrw(), frame.frame->data[0], frame.byte_size);
-	// log.info("audio: {}", frame.byte_size );
 	mix_audio(frame.frame->nb_samples, audio_buffer, 0);
 }
 
@@ -220,11 +221,15 @@ Ref<Texture2D> GAVPlayback::_get_texture() const {
 }
 
 int32_t GAVPlayback::_get_channels() const {
-	return VideoStreamPlayback::_get_channels();
+	log.info("_get_channels ", file_info.audio.num_channels);
+	return file_info.audio.num_channels;
 }
 
 int32_t GAVPlayback::_get_mix_rate() const {
-	return VideoStreamPlayback::_get_mix_rate();
+	if (!av)
+		return 0;
+	log.info("_get_mix_rate ", av->sample_rate());
+	return av->sample_rate();
 }
 
 void GAVPlayback::_update(double p_delta) {
@@ -249,6 +254,22 @@ void GAVPlayback::_update(double p_delta) {
 		}
 		{
 			// TODO: audio
+			// std::deque<AvAudioFrame> audio_frames;
+			// {
+			std::scoped_lock lock(audio_mutex);
+			if (!audio_frames_thread.empty()) {
+				for (const auto f : audio_frames_thread) {
+					on_audio_frame(f);
+				}
+				audio_frames_thread.clear();
+				// audio_frames.insert(audio_frames.begin(), audio_frames_thread.begin(), audio_frames_thread.end());
+			}
+			// }
+			// if (!audio_frames.empty()) {
+			// for (const auto &f : audio_frames) {
+			// on_audio_frame(f);
+			// }
+			// }
 		}
 	} else {
 		if (!av) {

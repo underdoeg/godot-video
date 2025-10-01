@@ -38,6 +38,7 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 	godot::Ref<godot::ImageTexture> thumb_texture;
 
 	godot::PackedFloat32Array audio_buffer;
+	AvFileInfo file_info;
 
 	void on_video_frame(const AvVideoFrame &frame) const;
 	void on_audio_frame(const AvAudioFrame &frame);

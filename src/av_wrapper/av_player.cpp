@@ -158,6 +158,8 @@ bool AvPlayer::load(const AvPlayerLoadSettings &settings) {
 	} else {
 		audio_stream_index = audio_index;
 		audio_stream = fmt_ctx->streams[audio_stream_index.value()];
+		output_sample_rate = output_settings_requested.audio_sample_rate > 0 ? output_settings_requested.audio_sample_rate : audio_stream->codecpar->sample_rate;
+		output_settings.audio_sample_rate = output_sample_rate;
 		log.verbose("found audio stream at index: {}", audio_stream_index.value());
 	}
 
@@ -417,14 +419,12 @@ AvCodecs::ResultType AvPlayer::init_audio() {
 
 	audio_codec = codec;
 
-	output_settings.audio_sample_rate = output_settings_requested.audio_sample_rate > 0 ? output_settings_requested.audio_sample_rate : audio_codec->sample_rate;
-
 	if (!audio_resampler) {
 		// create the resampler
 		swr_alloc_set_opts2(&audio_resampler,
 				&audio_codec->ch_layout,
 				output_settings.audio_sample_fmt,
-				output_settings.audio_sample_rate,
+				output_sample_rate,
 				&audio_codec->ch_layout, audio_codec->sample_fmt, audio_codec->sample_rate,
 				0, nullptr);
 		if (!ff_ok(swr_init(audio_resampler))) {
@@ -474,8 +474,13 @@ void AvPlayer::emit_audio_frame(const AvAudioFrame &frame) {
 		return;
 	}
 	// log.info("format: ")
-	auto target = frame;
-	target.frame = av_frame_ptr();
+	AvAudioFrame target = frame;
+	if (audio_frames_to_reuse.size()) {
+		target.frame = audio_frames_to_reuse.front();
+		audio_frames_to_reuse.pop_front();
+	} else {
+		target.frame = av_frame_ptr();
+	}
 
 	target.frame->format = output_settings.audio_sample_fmt;
 	target.frame->ch_layout = frame.frame->ch_layout;
@@ -483,6 +488,15 @@ void AvPlayer::emit_audio_frame(const AvAudioFrame &frame) {
 	target.frame->nb_samples = frame.frame->nb_samples;
 
 	if (!ff_ok(swr_convert_frame(audio_resampler, target.frame.get(), frame.frame.get()), "swr_convert_frame")) {
+		return;
+	}
+
+	if (target.frame->format != output_settings.audio_sample_fmt) {
+		log.error("Audio resampled data format doesn't match");
+		return;
+	}
+	if (target.frame->sample_rate != output_settings.audio_sample_rate) {
+		log.error("Audio sample rate doesn't match");
 		return;
 	}
 

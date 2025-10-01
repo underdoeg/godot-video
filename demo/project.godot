@@ -26,6 +26,4 @@ window/size/viewport_height=1080
 
 [gav_player]
 
-use_threads=true
 verbose_logging=true
-frame_buffer_size=3
