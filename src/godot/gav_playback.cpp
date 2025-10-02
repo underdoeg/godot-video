@@ -76,9 +76,19 @@ bool GAVPlayback::load(const String &p_path) {
 		std::condition_variable cv;
 		std::optional<AvFileInfo> info_from_thread;
 		settings.events.video_frame = [&](const AvVideoFrame &frame) {
-			auto copy = frame.copy();
-			std::scoped_lock lock(video_mutex);
-			video_frame_thread = copy;
+			AvFramePtr frame_ptr;
+			{
+				std::scoped_lock<std::mutex> lock(video_mutex);
+				if (!video_frames_thread_to_reuse.empty()) {
+					frame_ptr = video_frames_thread_to_reuse.front().frame;
+					video_frames_thread_to_reuse.pop_front();
+				}
+			}
+			auto copy = frame.copy(frame_ptr);
+			{
+				std::scoped_lock lock(video_mutex);
+				video_frame_thread = copy;
+			}
 		};
 
 		settings.events.audio_frame = [&](const AvAudioFrame &frame) {
@@ -251,6 +261,10 @@ void GAVPlayback::_update(double p_delta) {
 		}
 		if (frame) {
 			on_video_frame(frame.value());
+			{
+				std::scoped_lock lock(video_mutex);
+				video_frames_thread_to_reuse.push_back(frame.value());
+			}
 		}
 		{
 			// TODO: audio
