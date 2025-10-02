@@ -72,7 +72,7 @@ bool GAVPlayback::load(const String &p_path) {
 
 	bool result = false;
 	if (threaded) {
-		std::mutex mtx;
+		std::mutex load_mtx;
 		std::condition_variable cv;
 		std::optional<AvFileInfo> info_from_thread;
 		settings.events.video_frame = [&](const AvVideoFrame &frame) {
@@ -116,6 +116,7 @@ bool GAVPlayback::load(const String &p_path) {
 				log.info("av->load() failed");
 				return;
 			}
+
 			while (thread_keep_running) {
 				auto sleep_until = std::chrono::high_resolution_clock::now() + std::chrono::milliseconds(1000 / 120);
 				av->process();
@@ -125,7 +126,7 @@ bool GAVPlayback::load(const String &p_path) {
 
 		log.verbose("------------- waiting for video info -----------------------");
 		{
-			std::unique_lock lck(mtx);
+			std::unique_lock lck(load_mtx);
 			if (!loading_complete)
 				cv.wait(lck);
 		}

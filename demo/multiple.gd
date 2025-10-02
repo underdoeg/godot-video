@@ -29,6 +29,8 @@ func _process(_delta):
 
 func load_many():
 	for child in $container.get_children():
+		if child is VideoStreamPlayer:
+			child.stop()
 		child.queue_free()
 		
 	#await get_tree().process_frame
@@ -40,7 +42,10 @@ func load_many():
 		var player = VideoStreamPlayer.new()
 		player.size = Vector2(20, 20)
 		$container.add_child(player)
-		player.stream = load("res://Adrian_Loop_360.mov")
+		if i == 3:
+			player.stream = load("res://invalid.mp4")
+		else:
+			player.stream = load("res://Adrian_Loop_360.mov")
 		player.play()
 
 func _on_timer_timeout():

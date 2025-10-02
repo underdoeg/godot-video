@@ -350,7 +350,8 @@ AvCodecContextPtr AvPlayer::create_video_codec_context() {
 	if (!codec->hw_device_ctx || !codec->hw_frames_ctx->data) {
 		output_settings.video_hw_enabled = false;
 		output_settings_requested.video_hw_type = AV_HWDEVICE_TYPE_NONE;
-		log.warn("could not allocate hw device, will use software decoder. this is going to be slow");
+		//log.warn("could not allocate hw device, will use software decoder. this is going to be slow");
+		return {};
 	}
 
 	if (!ff_ok(avcodec_open2(codec.get(), decoder, nullptr))) {

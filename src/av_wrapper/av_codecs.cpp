@@ -10,6 +10,7 @@ AvCodecs::Result AvCodecs::get_or_create(AVStream *stream, const std::function<A
 	const auto create_result = [&]() -> Result {
 		++num_open_codecs;
 		if (auto res = create()) {
+			printf("---- number of open video and audio decoders: %d\n", num_open_codecs.load());
 			return { res, OK };
 		}
 		--num_open_codecs;
