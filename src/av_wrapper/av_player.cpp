@@ -101,9 +101,9 @@ void AvPlayer::fill_file_info() {
 		log.info("[Audio] num channels: {}, sample rate: {}, codec: {}, sample format: {}",
 				file_info.audio.num_channels, file_info.audio.sample_rate, file_info.audio.codec_name, audio_stream->codecpar->format);
 	}
-	if (load_settings.events.file_info) {
-		load_settings.events.file_info(file_info);
-	}
+	// if (load_settings.events.file_info) {
+	// 	load_settings.events.file_info(file_info);
+	// }
 }
 
 bool AvPlayer::load(const AvPlayerLoadSettings &settings) {

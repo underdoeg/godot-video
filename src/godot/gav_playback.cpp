@@ -97,18 +97,18 @@ bool GAVPlayback::load(const String &p_path) {
 			audio_frames_thread.push_back(copy);
 		};
 
-		settings.events.file_info = [&](const auto &info) {
-			std::unique_lock<std::mutex> lck(mtx);
-			info_from_thread = info;
-			cv.notify_all();
-		};
+		// settings.events.file_info = [&](const auto &info) {
+		// 	std::unique_lock<std::mutex> lck(mtx);
+		// 	info_from_thread = info;
+		// };
 
 		thread_keep_running = true;
 
-		std::atomic_bool loading_complete(false);
+		std::atomic_bool loading_complete = false;
 		thread = std::thread([&]() {
 			const auto res = av->load(settings);
 			// if (!res) {
+			info_from_thread = av->get_file_info();
 			cv.notify_all();
 			loading_complete = true;
 			// }
@@ -124,9 +124,11 @@ bool GAVPlayback::load(const String &p_path) {
 		});
 
 		log.verbose("------------- waiting for video info -----------------------");
-		std::unique_lock lck(mtx);
-		if (!loading_complete)
-			cv.wait(lck);
+		{
+			std::unique_lock lck(mtx);
+			if (!loading_complete)
+				cv.wait(lck);
+		}
 		log.info("-------------- done waiting for video info ---------------------");
 		if (info_from_thread) {
 			log.verbose("received video info from thread");
@@ -138,8 +140,8 @@ bool GAVPlayback::load(const String &p_path) {
 	} else {
 		settings.events.video_frame = [this](auto &frame) { on_video_frame(frame); };
 		settings.events.audio_frame = [this](auto &frame) { on_audio_frame(frame); };
-		settings.events.file_info = [this](auto &info) { set_file_info(info); };
-
+		// settings.events.file_info = [this](auto &info) { set_file_info(info); };
+		set_file_info(av->get_file_info());
 		result = av->load(settings);
 	}
 

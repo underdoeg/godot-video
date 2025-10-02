@@ -102,7 +102,7 @@ struct AvWrapperOutputSettings {
 struct AvPlayerEvents {
 	std::function<void(const AvVideoFrame &)> video_frame;
 	std::function<void(const AvAudioFrame &)> audio_frame;
-	std::function<void(const AvFileInfo &)> file_info;
+	// std::function<void(const AvFileInfo &)> file_info;
 	std::function<void()> end;
 };
 
@@ -212,6 +212,10 @@ public:
 			log(std::move(log)) {};
 
 	~AvPlayer();
+
+	AvFileInfo get_file_info() {
+		return file_info;
+	}
 
 	void stop();
 	void play();
