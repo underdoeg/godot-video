@@ -168,8 +168,8 @@ bool AvPlayer::load(const AvPlayerLoadSettings &settings) {
 	}
 
 	//
-	if (is_path_new)
-		fill_file_info();
+	// if (is_path_new)
+	fill_file_info();
 
 	///////
 	const auto res = init();
