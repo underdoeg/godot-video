@@ -104,10 +104,17 @@ bool GAVPlayback::load(const String &p_path) {
 		};
 
 		thread_keep_running = true;
+
+		std::atomic_bool loading_complete(false);
 		thread = std::thread([&]() {
-			auto res = av->load(settings);
+			const auto res = av->load(settings);
+			// if (!res) {
+			cv.notify_all();
+			loading_complete = true;
+			// }
 			if (!res) {
-				cv.notify_all();
+				log.info("av->load() failed");
+				return;
 			}
 			while (thread_keep_running) {
 				auto sleep_until = std::chrono::high_resolution_clock::now() + std::chrono::milliseconds(1000 / 120);
@@ -116,9 +123,13 @@ bool GAVPlayback::load(const String &p_path) {
 			}
 		});
 
+		log.verbose("------------- waiting for video info -----------------------");
 		std::unique_lock lck(mtx);
-		cv.wait(lck);
+		if (!loading_complete)
+			cv.wait(lck);
+		log.info("-------------- done waiting for video info ---------------------");
 		if (info_from_thread) {
+			log.verbose("received video info from thread");
 			set_file_info(info_from_thread.value());
 			result = true;
 		} else {
@@ -133,7 +144,9 @@ bool GAVPlayback::load(const String &p_path) {
 	}
 
 	if (!result) {
-		log.error("Failed to load {}", path_global.ptr());
+		log.error("Failed to load", path_global.ptr());
+		file_info.valid = false;
+		set_file_info(file_info);
 	}
 	return result;
 }
@@ -142,6 +155,13 @@ void GAVPlayback::set_file_info(const AvFileInfo &info) {
 	file_info = info;
 	if (!texture) {
 		texture = std::make_shared<GAVTexture>(RenderingServer::get_singleton()->get_rendering_device());
+	}
+
+	if (!file_info.valid) {
+		texture->setup({ AV_PIX_FMT_NONE,
+				64,
+				64 });
+		return;
 	}
 	texture->log.set_level(log.get_level());
 	texture->log.set_name(log.get_name() + String(" - texture"));

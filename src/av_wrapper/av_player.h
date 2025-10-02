@@ -36,6 +36,7 @@ struct AvAudioInfo {
 };
 
 struct AvFileInfo {
+	bool valid = false;
 	AvVideoInfo video{};
 	AvAudioInfo audio{};
 };

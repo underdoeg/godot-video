@@ -2,6 +2,7 @@ extends Control
 @onready var player = $player
 
 func _ready():
+	# player.stream = load("/invalid.mp4")
 	var stream:GAVStream = player.stream
 	stream.finished.connect(func():print("done"))
 	pass

@@ -40,7 +40,7 @@ bool GAVTexture::setup(const AvVideoInfo &_info) {
 		log.verbose("setup: size is already set to ", info.width, "x", info.height);
 		return true;
 	}
-	bool test_copy = false;
+	// bool test_copy = false;
 
 	log.verbose("begin create");
 	info = _info;

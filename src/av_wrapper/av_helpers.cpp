@@ -38,6 +38,8 @@ AvFramePtr av_frame_ptr() {
 AvFramePtr av_frame_clone(AvFramePtr src, AvFramePtr dst) {
 	if (!dst) {
 		dst = av_frame_ptr();
+	}else {
+		av_frame_unref(dst.get());
 	}
 	dst->format = src->format;
 	dst->width = src->width;

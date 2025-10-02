@@ -84,13 +84,17 @@ void AvPlayer::reset() {
 	log.verbose("reset end");
 }
 void AvPlayer::fill_file_info() {
-	file_info.video.width = video_stream->codecpar->width;
-	file_info.video.height = video_stream->codecpar->height;
-	file_info.video.frame_rate = av_q2d(video_stream->codecpar->framerate);
-	file_info.video.codec_name = avcodec_get_name(video_stream->codecpar->codec_id);
-	log.info("[Video] size: {}x{}, frame_rate: {}, codec: {}", file_info.video.width, file_info.video.height, file_info.video.frame_rate, file_info.video.codec_name);
-
-	if (audio_stream_index) {
+	if (video_stream_index && video_stream) {
+		file_info.video.width = video_stream->codecpar->width;
+		file_info.video.height = video_stream->codecpar->height;
+		file_info.video.frame_rate = av_q2d(video_stream->codecpar->framerate);
+		file_info.video.codec_name = avcodec_get_name(video_stream->codecpar->codec_id);
+		log.info("[Video] size: {}x{}, frame_rate: {}, codec: {}", file_info.video.width, file_info.video.height, file_info.video.frame_rate, file_info.video.codec_name);
+		file_info.valid = true;
+	}else {
+		file_info.valid = false;
+	}
+	if (audio_stream_index && audio_stream) {
 		file_info.audio.num_channels = audio_stream->codecpar->ch_layout.nb_channels;
 		file_info.audio.sample_rate = audio_stream->codecpar->sample_rate;
 		file_info.audio.codec_name = avcodec_get_name(audio_stream->codecpar->codec_id);
