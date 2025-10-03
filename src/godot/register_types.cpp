@@ -7,12 +7,15 @@
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/core/defs.hpp>
 #include <godot_cpp/godot.hpp>
+#include <godot_cpp/classes/engine.hpp>
 
 #include "gav_settings.h"
+#include "gav_singleton.h"
 
 using namespace godot;
 
 static Ref<GAVLoader> gav_loader;
+static GAVSingleton* gav_singleton;
 
 void initialize_gdextension_types(ModuleInitializationLevel p_level) {
 	if (p_level != MODULE_INITIALIZATION_LEVEL_SCENE) {
@@ -27,6 +30,7 @@ void initialize_gdextension_types(ModuleInitializationLevel p_level) {
 	GDREGISTER_CLASS(GAVStream);
 	GDREGISTER_CLASS(GAVLoader);
 	GDREGISTER_CLASS(GAVPlayback);
+	GDREGISTER_CLASS(GAVSingleton);
 
 	// Dictionary threaded_property;
 	// threaded_property.set("name", "video_player/use_threads");
@@ -37,6 +41,9 @@ void initialize_gdextension_types(ModuleInitializationLevel p_level) {
 	// {"hint", PROPERTY_HINT_TYPE_STRING},
 	// {"hint_string", "one,two,three"}
 	// };
+	gav_singleton = memnew(GAVSingleton);
+	Engine::get_singleton()->register_singleton("GAV", gav_singleton);
+
 
 	gav_loader.instantiate();
 	ResourceLoader::get_singleton()->add_resource_format_loader(gav_loader);
@@ -46,6 +53,11 @@ void uninitialize_gdextension_types(ModuleInitializationLevel p_level) {
 	if (p_level != MODULE_INITIALIZATION_LEVEL_SCENE) {
 		return;
 	}
+
+
+	Engine::get_singleton()->unregister_singleton("GAV");
+	memdelete(gav_singleton);
+
 	ResourceLoader::get_singleton()->remove_resource_format_loader(gav_loader);
 	gav_loader.unref();
 }

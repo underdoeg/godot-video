@@ -14,7 +14,7 @@ AvCodecs::Result AvCodecs::get_or_create(AVStream *stream, const std::function<A
 			return { res, OK };
 		}
 		--num_open_codecs;
-		return { {}, ERROR };
+		return { AvCodecContextPtr{}, ERROR };
 	};
 
 	if (!reusing_enabled) {
@@ -22,7 +22,7 @@ AvCodecs::Result AvCodecs::get_or_create(AVStream *stream, const std::function<A
 			return create_result();
 		}
 		printf("cannot create a new codec => max open codecs reached: %d\n", max_open_codecs);
-		return { {}, AGAIN };
+		return { AvCodecContextPtr{}, AGAIN };
 	}
 	auto codecpar = stream->codecpar;
 	const CodecInfo info = {
@@ -68,7 +68,7 @@ AvCodecs::Result AvCodecs::get_or_create(AVStream *stream, const std::function<A
 		std::unique_lock lock(mutex);
 		if (codecs.empty()) {
 			printf("cannot create a new codec => max open codecs reached: %d\n", max_open_codecs);
-			return { {}, AGAIN };
+			return { AvCodecContextPtr{}, AGAIN };
 		}
 		printf("max open codecs reached (%d). will remove an incompatible codec from cache\n", max_open_codecs);
 		codecs.front().context.reset();
@@ -104,4 +104,7 @@ void AvCodecs::set_reusing_enabled(bool p_reusing_enabled) {
 		std::lock_guard<std::mutex> lock(mutex);
 		codecs.clear();
 	}
+}
+void AvCodecs::cleanup() {
+	set_reusing_enabled(false);
 }

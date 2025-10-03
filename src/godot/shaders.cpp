@@ -6,13 +6,23 @@
 #include "shaders.h"
 
 #include <map>
+#include <ranges>
 
 using namespace godot;
 
+struct ShaderCacheEntry {
+	RenderingDevice *rd = nullptr;
+	RID shader;
+};
+
+static std::map<String, ShaderCacheEntry> shader_cache;
+
 RID compile_shader(RenderingDevice *rd, const String &glsl, const String &name) {
-	static std::map<String, RID> shader_cache;
 	if (shader_cache.contains(name)) {
-		return shader_cache.at(name);
+		auto &entry = shader_cache.at(name);
+		if (entry.rd == rd) {
+			return entry.shader;
+		}
 	}
 
 	auto src = memnew(RDShaderSource);
@@ -27,8 +37,16 @@ RID compile_shader(RenderingDevice *rd, const String &glsl, const String &name) 
 		return {};
 	}
 	UtilityFunctions::print("created shader ", name);
-	shader_cache[name] = shader;
+
+	// Store both the RenderingDevice pointer and shader RID
+	shader_cache[name] = ShaderCacheEntry{ rd, shader };
 	return shader;
+}
+
+void cleanup_shaders() {
+	for (auto val : shader_cache | std::views::values) {
+		val.rd->free_rid(val.shader);
+	}
 }
 
 RID yuv420(RenderingDevice *rd, Vector2i size) {

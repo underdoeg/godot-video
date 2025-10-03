@@ -1,5 +1,6 @@
 #include "gav_playback.h"
 #include "gav_settings.h"
+#include "gav_singleton.h"
 
 #include <condition_variable>
 #include <filesystem>

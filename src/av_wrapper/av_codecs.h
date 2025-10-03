@@ -50,4 +50,5 @@ public:
 	Result get_or_create(AVStream *stream, const std::function<AvCodecContextPtr()> &create);
 	void release(AvCodecContextPtr codec);
 	void set_reusing_enabled(bool reusing_enabled);
+	void cleanup();
 };
