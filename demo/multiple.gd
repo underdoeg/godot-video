@@ -25,7 +25,7 @@ func _ready() -> void:
 
 func _process(_delta):
 	if video:
-		$seconds.text = str(video.stream_position) + "s"
+		$seconds.text = str(floor(video.stream_position * 100)/100) + "s\nTotal: " + str(video.get_stream_length()) + "s" 
 
 func load_many():
 	for child in $container.get_children():

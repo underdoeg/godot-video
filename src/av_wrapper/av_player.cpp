@@ -89,9 +89,11 @@ void AvPlayer::fill_file_info() {
 		file_info.video.height = video_stream->codecpar->height;
 		file_info.video.frame_rate = av_q2d(video_stream->codecpar->framerate);
 		file_info.video.codec_name = avcodec_get_name(video_stream->codecpar->codec_id);
+		auto seconds = std::chrono::duration<double>(static_cast<double>(video_stream->duration) * av_q2d(video_stream->time_base));
+		file_info.duration_millis = std::chrono::duration_cast<std::chrono::milliseconds>(seconds).count();
 		log.info("[Video] size: {}x{}, frame_rate: {}, codec: {}", file_info.video.width, file_info.video.height, file_info.video.frame_rate, file_info.video.codec_name);
 		file_info.valid = true;
-	}else {
+	} else {
 		file_info.valid = false;
 	}
 	if (audio_stream_index && audio_stream) {
@@ -378,7 +380,7 @@ AvCodecs::ResultType AvPlayer::init_video() {
 }
 
 bool AvPlayer::video_frame_received(const AvFramePtr &frame) {
-	const auto millis = av_get_frame_millis(frame, video_codec);
+	const auto millis = av_get_frame_millis_ptr(frame, video_codec);
 	video_frames.push_back({ frame,
 			millis,
 			frame->hw_frames_ctx ? HW_BUFFER : SW_BUFFER,
@@ -589,7 +591,7 @@ bool AvPlayer::frame_received(const AvFramePtr &frame, const int stream_index) {
 }
 
 bool AvPlayer::audio_frame_received(const AvFramePtr &frame) {
-	const auto millis = av_get_frame_millis(frame, audio_codec);
+	const auto millis = av_get_frame_millis_ptr(frame, audio_codec);
 	audio_frames.push_back({ frame, millis, 0 });
 	return frame_needs_emit(audio_frames.back());
 }
@@ -681,6 +683,7 @@ void AvPlayer::emit_frames() {
 			++frame_drop_counter;
 		}
 		if (result) {
+			position_millis = result.value().millis.count();
 			emit_video_frame(result.value());
 		}
 	} else if (is_playing()) {

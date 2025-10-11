@@ -37,6 +37,7 @@ struct AvAudioInfo {
 
 struct AvFileInfo {
 	bool valid = false;
+	double duration_millis = 0;
 	AvVideoInfo video{};
 	AvAudioInfo audio{};
 };
@@ -180,7 +181,8 @@ private:
 
 	std::atomic_bool playing = false;
 	std::atomic_bool paused = false;
-	std::atomic_int64_t duration_millis = 0;
+	// std::atomic_int64_t duration_millis = 0;
+	std::atomic_int64_t position_millis = 0;
 	std::atomic_bool is_eof = false;
 
 	std::atomic_bool ready_for_playback = false;
@@ -228,12 +230,17 @@ public:
 	}
 	[[nodiscard]] bool is_paused() const {
 		return playing && paused;
-	};
+	}
+
+	double position_seconds() {
+		return position_millis / 1000.0;
+	}
+	;
 	void shutdown() {
 		add_command(SHUTDOWN);
 	}
-	double duration_seconds() const {
-		return duration_millis / 1000.0;
+	[[nodiscard]] double duration_seconds() const {
+		return file_info.duration_millis / 1000.0;
 	}
 	int sample_rate() {
 		return output_sample_rate;

@@ -324,7 +324,7 @@ if (USE_SYSTEM_FFMPEG)
             va va-drm va-x11 va-wayland xcb-dri3
             drm Xext vdpau vulkan Xfixes X11-xcb
             avformat avcodec avdevice avutil avfilter swscale swresample
-            vulkan vpx aom va fdk-aac mp3lame dav1d opus va-drm va-x11 vdpau vorbis vorbisenc numa
+            vulkan aom va fdk-aac mp3lame dav1d opus va-drm va-x11 vdpau vorbis vorbisenc numa
             x264 x265 lzma bz2
     )
 else ()
@@ -340,7 +340,7 @@ else ()
             va va-drm va-x11 va-wayland # OpenCL
             # link system libva, no idea how to use the static libs platform independent
             X11 Xfixes
-            vulkan vpx aom fdk-aac mp3lame dav1d opus vdpau vorbis vorbisenc numa
+            vulkan aom fdk-aac mp3lame dav1d opus vdpau vorbis vorbisenc numa
     )
 endif ()
 

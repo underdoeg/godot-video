@@ -1,7 +1,7 @@
 [gd_scene load_steps=3 format=3 uid="uid://dh0oj81pufivs"]
 
 [ext_resource type="Script" uid="uid://clmfltu5op357" path="res://multiple.gd" id="1_hsxc6"]
-[ext_resource type="VideoStream" uid="uid://g7m1x0s07r0" path="res://ST_UHD_60p_H264_Gitter_Kreise_Ton_5_1.mp4" id="2_hsxc6"]
+[ext_resource type="VideoStream" uid="uid://dm7c4rf38o0a0" path="res://ST_HD_60p_H265_Gitter_Kreise.mp4" id="2_hsxc6"]
 
 [node name="Control" type="Control"]
 layout_mode = 3

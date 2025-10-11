@@ -23,7 +23,8 @@ AvPacketPtr av_packet_ptr();
 using AvCodecContextPtr = std::shared_ptr<AVCodecContext>;
 AvCodecContextPtr avcodec_context_ptr(const AVCodec *decoder);
 
-std::chrono::milliseconds av_get_frame_millis(const AvFramePtr &frame, AvCodecContextPtr codec);
+std::chrono::milliseconds av_get_frame_millis(const AvFramePtr &frame, const AVCodecContext* codec);
+std::chrono::milliseconds av_get_frame_millis_ptr(const AvFramePtr &frame, AvCodecContextPtr codec);
 
 std::string av_thumbnail_path(const std::string &video_path);
 

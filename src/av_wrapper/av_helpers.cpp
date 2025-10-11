@@ -66,11 +66,15 @@ AvCodecContextPtr avcodec_context_ptr(const AVCodec *decoder) {
 			} };
 }
 
-std::chrono::milliseconds av_get_frame_millis(const AvFramePtr &frame, const AvCodecContextPtr codec) {
+std::chrono::milliseconds av_get_frame_millis(const AvFramePtr &frame, const AVCodecContext* codec) {
 	auto pts = static_cast<double>(frame->best_effort_timestamp);
 	pts *= av_q2d(codec->time_base);
 	auto seconds = std::chrono::duration<double>(pts);
 	return std::chrono::duration_cast<std::chrono::milliseconds>(seconds);
+}
+
+std::chrono::milliseconds av_get_frame_millis_ptr(const AvFramePtr &frame, const AvCodecContextPtr codec) {
+	return av_get_frame_millis(frame, codec.get());
 }
 std::string av_thumbnail_path(const std::string &video_path) {
 	const auto tmp_path = std::filesystem::temp_directory_path() / std::filesystem::path(video_path).filename().replace_extension("jpg");

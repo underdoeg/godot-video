@@ -228,14 +228,18 @@ bool GAVPlayback::_is_playing() const {
 }
 
 double GAVPlayback::_get_length() const {
-	if (!av) {
-		return 0;
-	}
-	return av->duration_seconds();
+	// if (!av) {
+	// 	return 0;
+	// }
+	// return av->duration_seconds();
+	return file_info.duration_millis / 1000.0;
 }
 
 double GAVPlayback::_get_playback_position() const {
-	return 0.0;
+	if (!av) {
+		return 0;
+	}
+	return av->position_seconds();
 }
 
 void GAVPlayback::_seek(double p_time) {
