@@ -66,6 +66,7 @@ void AvPlayer::reset() {
 
 	if (fmt_ctx) {
 		avformat_close_input(&fmt_ctx);
+		log.info("close fmt_ctx");
 	}
 	video_codec = audio_codec = nullptr;
 	fmt_ctx = nullptr;
@@ -81,7 +82,7 @@ void AvPlayer::reset() {
 	waiting_for_init = false;
 	num_commands = 0;
 
-	log.verbose("reset end");
+	log.verbose("reset done");
 }
 void AvPlayer::fill_file_info() {
 	if (video_stream_index && video_stream) {
