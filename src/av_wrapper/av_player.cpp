@@ -576,6 +576,21 @@ bool AvPlayer::read_next_frames() {
 			}
 		}
 	}
+
+	if (receive_res == AVERROR(EAGAIN)) {
+		// all good
+		return frame_need_emit;
+	}
+
+	if (receive_res == AVERROR_EOF) {
+		is_eof = true;
+		return frame_need_emit;
+	}
+
+	// a fatal error occured, finish it
+	log.error("Error receiving frame {}", av_error_string(receive_res));
+	is_eof = true;
+
 	return frame_need_emit;
 }
 
