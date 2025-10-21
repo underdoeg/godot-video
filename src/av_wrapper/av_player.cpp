@@ -8,6 +8,8 @@
 #include "av_helpers.h"
 #include "godot_cpp/variant/utility_functions.hpp"
 
+#include <bits/this_thread_sleep.h>
+
 #include <map>
 #include <mutex>
 
@@ -112,7 +114,7 @@ void AvPlayer::fill_file_info() {
 bool AvPlayer::load(const AvPlayerLoadSettings &settings) {
 	reset();
 
-	bool is_path_new = load_settings.file_path != settings.file_path;
+	// bool is_path_new = load_settings.file_path != settings.file_path;
 
 	load_settings = settings;
 
@@ -130,7 +132,7 @@ bool AvPlayer::load(const AvPlayerLoadSettings &settings) {
 	AVDictionary *options = nullptr;
 	// av_dict_set(&options, "loglevel", "debug", 0);
 	// av_log_set_level(AV_LOG_DEBUG);
-	if (!ff_ok(avformat_open_input(&fmt_ctx, settings.file_path.c_str(), nullptr, &options))) {
+	if (!ff_ok(avformat_open_input(&fmt_ctx, file_path.c_str(), nullptr, &options))) {
 		log.error("avformat_open_input failed");
 		return false;
 	}

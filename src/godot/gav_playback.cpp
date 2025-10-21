@@ -127,9 +127,14 @@ bool GAVPlayback::load(const String &p_path) {
 
 		log.verbose("------------- waiting for video info -----------------------");
 		{
+			auto end_time = std::chrono::high_resolution_clock::now() + std::chrono::seconds(10);
 			std::unique_lock lck(load_mtx);
-			if (!loading_complete)
-				cv.wait(lck);
+			if (!loading_complete) {
+				const auto res = cv.wait_until(lck, end_time);
+				if (res == std::cv_status::timeout) {
+					log.error("av->load() timeout");
+				}
+			}
 		}
 		log.info("-------------- done waiting for video info ---------------------");
 		if (info_from_thread) {
@@ -296,22 +301,19 @@ void GAVPlayback::_update(double p_delta) {
 		}
 		{
 			// TODO: audio
-			// std::deque<AvAudioFrame> audio_frames;
-			// {
-			std::scoped_lock lock(audio_mutex);
-			if (!audio_frames_thread.empty()) {
-				for (const auto f : audio_frames_thread) {
-					on_audio_frame(f);
+			std::deque<AvAudioFrame> audio_frames;
+			{
+				std::scoped_lock lock(audio_mutex);
+				if (!audio_frames_thread.empty()) {
+					audio_frames.insert(audio_frames.end(), audio_frames_thread.begin(), audio_frames_thread.end());
 				}
 				audio_frames_thread.clear();
-				// audio_frames.insert(audio_frames.begin(), audio_frames_thread.begin(), audio_frames_thread.end());
 			}
-			// }
-			// if (!audio_frames.empty()) {
-			// for (const auto &f : audio_frames) {
-			// on_audio_frame(f);
-			// }
-			// }
+			if (!audio_frames.empty()) {
+				for (const auto &f : audio_frames) {
+					on_audio_frame(f);
+				}
+			}
 		}
 	} else {
 		if (!av) {
