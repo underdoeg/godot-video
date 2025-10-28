@@ -13,6 +13,9 @@ set(LIBNAME "godot-video" CACHE STRING "The name of the library")
 set(GODOT_PROJECT_DIR "demo" CACHE STRING "The directory of a Godot project folder")
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 
+message(C COMPILER SET TO ${CMAKE_C_COMPILER})
+message(CXX COMPILER SET TO ${CMAKE_CXX_COMPILER})
+
 # Make sure all the dependencies are satisfied
 find_package(Python3 3.4 REQUIRED)
 find_program(GIT git REQUIRED)
@@ -23,7 +26,9 @@ set(LIBS_INSTALL ${CMAKE_BINARY_DIR}/libs)
 set(LIBS_INCLUDE ${LIBS_INSTALL}/include)
 set(LIBS_LINK ${LIBS_INSTALL}/lib)
 set(LIBS_PKG ${LIBS_LINK}/pkgconfig)
-message("libraries will bi installed into ${LIBS_INSTALL}")
+message("libraries will be installed into ${LIBS_INSTALL}")
+
+set(MAKE_FLAGS "CC=${CMAKE_C_COMPILER} CXX=${CMAKE_CXX_COMPILER}")
 
 # X264
 set(X264_DIR ${CMAKE_BINARY_DIR}/x264)
@@ -35,9 +40,9 @@ ExternalProject_Add(
         PREFIX ${X264_DIR}
         INSTALL_DIR ${LIBS_INSTALL}
         #        CONFIGURE_COMMAND echo <INSTALL_DIR>
-        CONFIGURE_COMMAND cd <SOURCE_DIR> && ./configure --prefix=<INSTALL_DIR> --enable-static --disable-cli --enable-pic
-        BUILD_COMMAND make -j -C <SOURCE_DIR>
-        INSTALL_COMMAND make -C <SOURCE_DIR> install
+        CONFIGURE_COMMAND cd <SOURCE_DIR> && ./configure ${MAKE_FLAGS} --prefix=<INSTALL_DIR> --enable-static --disable-cli --enable-pic
+        BUILD_COMMAND make ${MAKE_FLAGS} -j -C <SOURCE_DIR>
+        INSTALL_COMMAND make ${MAKE_FLAGS} -C <SOURCE_DIR> install
 )
 
 set(X265_DIR ${CMAKE_BINARY_DIR}/x265)
@@ -308,6 +313,7 @@ set(GODOT_PROJECT_BINARY_DIR "${PROJECT_SOURCE_DIR}/${GODOT_PROJECT_DIR}/bin/${G
 
 set(USE_SYSTEM_FFMPEG OFF CACHE BOOL "Use system installed ffmpeg instead of building from source")
 set(USE_GODOT_PATCHED OFF CACHE BOOL "Build for patched godot with vulkan video modules")
+set(BUILD_ANDROID OFF CACHE BOOL "Build for Android")
 
 target_include_directories(${LIBNAME} PUBLIC src src/godot)
 
@@ -316,7 +322,14 @@ if (USE_GODOT_PATCHED)
 endif ()
 
 
-if (USE_SYSTEM_FFMPEG)
+if (BUILD_ANDROID)
+    message("building for android")
+    target_include_directories(${LIBNAME} PRIVATE "${PROJECT_SOURCE_DIR}/android/ffmpeg/include/arm64-v8a")
+    target_link_directories(${LIBNAME} PRIVATE "${PROJECT_SOURCE_DIR}/android/ffmpeg/lib/arm64-v8a")
+    target_link_libraries(${LIBNAME} PRIVATE godot-cpp
+            avformat avcodec avdevice avutil avfilter swscale swresample
+    )
+elseif (USE_SYSTEM_FFMPEG)
     message("-- using system ffmpeg")
     #    target_include_directories(${LIBNAME} PRIVATE ${LIBS_INCLUDE}) #${CMAKE_BINARY_DIR}/ffmpeg/src/ffmpeg
     #    target_link_directories(${LIBNAME} PRIVATE ${LIBS_LINK})

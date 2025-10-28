@@ -45,6 +45,14 @@ On intel vulkan video api is behind a flag. Launch with
 ANV_VIDEO_DECODE=1 ./godot.linuxbsd.editor.x86_64 --main-pack something.pck
 ```
 
+### Build for android
+** needs prebuilt static androif ffmpeg libs in android ffmpeg (eg see https://github.com/Javernaut/ffmpeg-android-maker) **
+```
+mkdir build-android
+cmake -DBUILD_ANDROID=ON ..
+cmake --build . --target godot-video
+```
+
 ## Notes
 
 library is linked against vaapi 2.2, older ubuntu version need the intel ppa

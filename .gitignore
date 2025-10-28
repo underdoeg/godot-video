@@ -65,3 +65,4 @@ CMakeUserPresets.json
 /bin/godot*
 *.mp4
 *.mov
+/android/ffmpeg/

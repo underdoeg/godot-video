@@ -8,7 +8,7 @@
 #include "av_helpers.h"
 #include "godot_cpp/variant/utility_functions.hpp"
 
-#include <bits/this_thread_sleep.h>
+#include <thread>
 
 #include <map>
 #include <mutex>
@@ -17,7 +17,6 @@ extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavutil/channel_layout.h>
-#include <libavutil/hwcontext_vaapi.h>
 #include <libavutil/pixdesc.h>
 }
 
@@ -668,7 +667,7 @@ void AvPlayer::emit_frames() {
 	if (video_frames.size() || audio_frames.size()) {
 		if (!has_started()) {
 			start_time = Clock::now();
-			log.verbose("start time set to: {}", start_time.value());
+			// log.verbose("start time set to: {}", start_time.value());
 		}
 
 		// first handle audio

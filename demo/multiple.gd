@@ -7,7 +7,7 @@ extends Control
 func _ready() -> void:
 	dynamic_video.file = "res://4k_h264_30p.mp4"
 	%video_dynamic.stream = dynamic_video
-	%video_dynamic.loop = true
+	#%video_dynamic.loop = true
 	%video_dynamic.play()
 	
 	# dynamic_video.started.connect(func():print("started"))
