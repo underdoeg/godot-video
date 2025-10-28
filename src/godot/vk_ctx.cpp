@@ -4,6 +4,8 @@
 
 #include "vk_ctx.h"
 
+#include <vector>
+
 #include <godot_cpp/classes/rendering_server.hpp>
 
 using namespace godot;

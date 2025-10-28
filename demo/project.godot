@@ -27,3 +27,7 @@ window/size/viewport_height=1080
 [gav_player]
 
 verbose_logging=true
+
+[rendering]
+
+textures/vram_compression/import_etc2_astc=true

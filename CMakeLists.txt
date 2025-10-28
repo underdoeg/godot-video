@@ -8,13 +8,26 @@ include(ExternalProject)
 if (CMAKE_C_COMPILER)
 endif ()
 
+if (BUILD_ANDROID)
+    set(CMAKE_SYSTEM_NAME "Android")
+
+    if (NOT DEFINED CMAKE_ANDROID_NDK)
+        set(CMAKE_ANDROID_NDK $ENV{HOME}/Android/Sdk/ndk/29.0.13599879)
+    endif ()
+
+    if (NOT DEFINED CMAKE_ANDROID_ARCH_ABI)
+        set(CMAKE_ANDROID_ARCH_ABI arm64-v8a)
+    endif ()
+
+endif ()
+
 set(CMAKE_CXX_STANDARD 20)
 set(LIBNAME "godot-video" CACHE STRING "The name of the library")
 set(GODOT_PROJECT_DIR "demo" CACHE STRING "The directory of a Godot project folder")
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5)
 
-message(C COMPILER SET TO ${CMAKE_C_COMPILER})
-message(CXX COMPILER SET TO ${CMAKE_CXX_COMPILER})
+message("C COMPILER SET TO ${CMAKE_C_COMPILER}")
+message("CXX COMPILER SET TO ${CMAKE_CXX_COMPILER}")
 
 # Make sure all the dependencies are satisfied
 find_package(Python3 3.4 REQUIRED)
@@ -263,6 +276,12 @@ include(GodotCPPModule)
 get_target_property(GODOTCPP_SUFFIX godot::cpp GODOTCPP_SUFFIX)
 get_target_property(GODOTCPP_PLATFORM godot::cpp GODOTCPP_PLATFORM)
 
+if(BUILD_ANDROID)
+#    string(REPLACE "linux" "android" ${GODOTCPP_SUFFIX} ${GODOTCPP_SUFFIX})
+#    message(${GODOTCPP_SUFFIX})
+    set(GODOTCPP_PLATFORM "android")
+endif()
+
 # Now we can specify our own project which will inherit any global cmake properties or variables that have been defined.
 project(godot-video
         VERSION 1.0
@@ -309,6 +328,15 @@ if (DOC_XML)
         target_doc_sources(${LIBNAME} ${DOC_XML})
     endif ()
 endif ()
+
+#if (BUILD_ANDROID)
+#    set(GODOTCPP_PLATFORM "android")
+#endif ()
+#set(PLATFORM_DIR ${GODOTCPP_PLATFORM})
+#if (BUILD_ANDROID)
+#    set(PLATFORM_DIR "android")
+#endif()
+
 set(GODOT_PROJECT_BINARY_DIR "${PROJECT_SOURCE_DIR}/${GODOT_PROJECT_DIR}/bin/${GODOTCPP_PLATFORM}")
 
 set(USE_SYSTEM_FFMPEG OFF CACHE BOOL "Use system installed ffmpeg instead of building from source")
@@ -359,6 +387,7 @@ endif ()
 
 #target_link_options(${LIBNAME} PUBLIC -Wl,-rpath ./bin/linux)
 
+
 set_target_properties(${LIBNAME}
         PROPERTIES
         # The generator expression here prevents msvc from adding a Debug or Release subdir.
@@ -371,8 +400,15 @@ set_target_properties(${LIBNAME}
 #add_custom_command(TARGET ${LIBNAME} PRE_BUILD
 #        COMMAND ${CMAKE_COMMAND} -E copy "${FFMPEG_INSTALL}/lib/*.so*" "${GODOT_PROJECT_BINARY_DIR}/"
 #)
+
+#set(TARGET_FILE "${GODOT_PROJECT_BINARY_DIR}/$<TARGET_FILE_NAME:${LIBNAME}>")
+#if(BUILD_ANDROID)
+##    string(REPLACE "linux" "android" ${TARGET_FILE} ${TARGET_FILE})
+#endif()
+#message("COPY LIB TO ${TARGET_FILE}")
+
 add_custom_command(TARGET ${LIBNAME} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:${LIBNAME}>" "${GODOT_PROJECT_BINARY_DIR}/$<TARGET_FILE_NAME:${LIBNAME}>"
+        COMMAND ${CMAKE_COMMAND} -E copy "$<TARGET_FILE:${LIBNAME}>"  "${GODOT_PROJECT_BINARY_DIR}/$<TARGET_FILE_NAME:${LIBNAME}>"
 )
 
 

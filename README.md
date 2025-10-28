@@ -50,7 +50,7 @@ ANV_VIDEO_DECODE=1 ./godot.linuxbsd.editor.x86_64 --main-pack something.pck
 ```
 mkdir build-android
 cmake -DBUILD_ANDROID=ON ..
-cmake --build . --target godot-video
+cmake --build . --target godot-video-android
 ```
 
 ## Notes
