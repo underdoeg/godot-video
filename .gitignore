@@ -67,3 +67,7 @@ CMakeUserPresets.json
 *.mov
 /android/ffmpeg/
 /demo/android/
+*.apk
+/androidtest/
+/demo/addons/gav/*.uid
+/demo/addons/gav/*/

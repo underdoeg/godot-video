@@ -94,7 +94,7 @@ RID yuv420(RenderingDevice *rd, Vector2i size) {
 
 			vec3 rgb = vec3(y,u-.5,v-.5) * color_matrix;
 			//vec3 rgb = vec3(y,u,v);
-
+			//imageStore(result, texel, vec4(y, u, v, 1));
 			imageStore(result, texel, vec4(rgb, 1));
 
 			//y = 1.1643*(y-0.0625);
@@ -114,12 +114,10 @@ RID yuv420(RenderingDevice *rd, Vector2i size) {
 		}
 	)";
 
-	// Dictionary replace;
 	// // replace.set("width", size.x);
 	// // replace.set("height", size.y);
 	// s = s.format(replace);
 	return compile_shader(rd, s, "yuv420");
-	// return cache;
 }
 
 RID yuv420p10le(RenderingDevice *rd, Vector2i size) {
@@ -213,8 +211,6 @@ RID nv12(RenderingDevice *rd, Vector2i size) {
 			//texel_v.x /= 4;
 			//texel_v.x += texel_half.x;
 			//texel_v.x += 1920;
-
-
 
 			float y = imageLoad(Y, texel).r;
 			float u = imageLoad(UV, texel_u).r;

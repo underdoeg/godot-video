@@ -10,8 +10,8 @@ config_version=5
 
 [application]
 
-config/name="godot cpp template"
-run/main_scene="uid://dh0oj81pufivs"
+config/name="godot-libav"
+run/main_scene="uid://b568gxnsliogt"
 config/features=PackedStringArray("4.5", "Forward Plus")
 config/icon="res://icon.svg"
 

@@ -1,0 +1,9 @@
+[configuration]
+
+entry_symbol = "godot_av_init"
+compatibility_minimum = "4.4"
+
+[libraries]
+; Relative paths ensure that our GDExtension can be placed anywhere in the project directory.
+android.x86_64.single.debug = "libgav.android.template_debug.x86_64.so"
+android.arm64.single.debug = "libgav.android.template_debug.arm64.so"

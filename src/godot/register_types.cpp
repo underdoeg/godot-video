@@ -3,11 +3,11 @@
 #include "gav_loader.h"
 
 #include <gdextension_interface.h>
+#include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/resource_loader.hpp>
 #include <godot_cpp/core/class_db.hpp>
 #include <godot_cpp/core/defs.hpp>
 #include <godot_cpp/godot.hpp>
-#include <godot_cpp/classes/engine.hpp>
 
 #include "gav_settings.h"
 #include "gav_singleton.h"
@@ -15,7 +15,7 @@
 using namespace godot;
 
 static Ref<GAVLoader> gav_loader;
-static GAVSingleton* gav_singleton;
+static GAVSingleton *gav_singleton;
 
 void initialize_gdextension_types(ModuleInitializationLevel p_level) {
 	if (p_level != MODULE_INITIALIZATION_LEVEL_SCENE) {
@@ -44,7 +44,6 @@ void initialize_gdextension_types(ModuleInitializationLevel p_level) {
 	gav_singleton = memnew(GAVSingleton);
 	Engine::get_singleton()->register_singleton("GAV", gav_singleton);
 
-
 	gav_loader.instantiate();
 	ResourceLoader::get_singleton()->add_resource_format_loader(gav_loader);
 }
@@ -53,7 +52,6 @@ void uninitialize_gdextension_types(ModuleInitializationLevel p_level) {
 	if (p_level != MODULE_INITIALIZATION_LEVEL_SCENE) {
 		return;
 	}
-
 
 	Engine::get_singleton()->unregister_singleton("GAV");
 	memdelete(gav_singleton);

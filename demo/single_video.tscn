@@ -1,7 +1,7 @@
 [gd_scene load_steps=3 format=3 uid="uid://b568gxnsliogt"]
 
 [ext_resource type="Script" uid="uid://dcj2ph8clyi0n" path="res://single_video.gd" id="1_phvak"]
-[ext_resource type="VideoStream" uid="uid://dm7c4rf38o0a0" path="res://ST_HD_60p_H265_Gitter_Kreise.mp4" id="2_phvak"]
+[ext_resource type="VideoStream" uid="uid://bf5n8qd6pcxr8" path="res://4k_h264_30p.mp4" id="2_phvak"]
 
 [node name="SingleVideo" type="ColorRect"]
 anchors_preset = 15

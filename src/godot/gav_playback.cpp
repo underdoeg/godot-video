@@ -34,6 +34,7 @@ GAVPlayback::~GAVPlayback() {
 }
 
 bool GAVPlayback::load(const String &p_path) {
+	threaded = gav_settings::use_threads();
 	thread_keep_running = false;
 	if (thread.joinable()) {
 		thread.join();
@@ -148,8 +149,8 @@ bool GAVPlayback::load(const String &p_path) {
 		settings.events.video_frame = [this](auto &frame) { on_video_frame(frame); };
 		settings.events.audio_frame = [this](auto &frame) { on_audio_frame(frame); };
 		// settings.events.file_info = [this](auto &info) { set_file_info(info); };
-		set_file_info(av->get_file_info());
 		result = av->load(settings);
+		set_file_info(av->get_file_info());
 	}
 
 	if (!result) {
@@ -274,6 +275,7 @@ int32_t GAVPlayback::_get_mix_rate() const {
 	log.info("_get_mix_rate ", av->sample_rate());
 	return av->sample_rate();
 }
+
 
 void GAVPlayback::_update(double p_delta) {
 	MEASURE_N("MAIN");

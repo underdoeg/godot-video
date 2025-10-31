@@ -6,6 +6,7 @@
 
 #include "av_codecs.h"
 #include "av_helpers.h"
+#include "godot_cpp/classes/display_server.hpp"
 #include "godot_cpp/variant/utility_functions.hpp"
 
 #include <thread>
@@ -19,6 +20,14 @@ extern "C" {
 #include <libavutil/channel_layout.h>
 #include <libavutil/pixdesc.h>
 }
+
+#ifdef BUILD_ANDROID
+#include "gav_jni.h"
+extern "C" {
+#include <libavcodec/jni.h>
+#include <libavcodec/mediacodec.h>
+}
+#endif
 
 AvCodecs AvPlayer::codecs;
 
@@ -110,6 +119,18 @@ void AvPlayer::fill_file_info() {
 	// }
 }
 
+static void av_log_callback(void *ptr, int level, const char *fmt, va_list vargs) {
+	// vprintf(fmt, vargs);
+	if (!level < AV_LOG_WARNING)
+		return;
+	const auto size = 1024;
+	static char output_buffer[size];
+	if (auto count = snprintf(output_buffer, size, fmt, vargs)) {
+		output_buffer[count - 1] = '\0';
+		godot::UtilityFunctions::printerr(output_buffer);
+	}
+}
+
 bool AvPlayer::load(const AvPlayerLoadSettings &settings) {
 	reset();
 
@@ -129,8 +150,10 @@ bool AvPlayer::load(const AvPlayerLoadSettings &settings) {
 	log.verbose("Begin loading of {}", file_path.string());
 
 	AVDictionary *options = nullptr;
-	// av_dict_set(&options, "loglevel", "debug", 0);
+	av_dict_set(&options, "loglevel", "debug", 0);
 	// av_log_set_level(AV_LOG_DEBUG);
+	av_log_set_level(AV_LOG_ERROR);
+	av_log_set_callback(av_log_callback);
 	if (!ff_ok(avformat_open_input(&fmt_ctx, file_path.c_str(), nullptr, &options))) {
 		log.error("avformat_open_input failed");
 		return false;
@@ -261,7 +284,55 @@ AvCodecContextPtr AvPlayer::create_video_codec_context() {
 	}
 
 	std::vector<const AVCodecHWConfig *> hw_configs;
-	// find the best hardware accelerated video config
+
+	//// android
+#ifdef BUILD_ANDROID
+
+	auto media_codec_type = av_hwdevice_find_type_by_name("mediacodec");
+	if (media_codec_type != AV_HWDEVICE_TYPE_NONE) {
+		// const auto media_decoder = avcodec_find_decoder_by_name("hevc_mediacodec");
+		// if (media_decoder) {
+		log.info("detected mediacoded. device is android. will try to create  a media codec decoder");
+
+		std::string decoder_name;
+		switch (codec->codec_id) {
+			case AV_CODEC_ID_H264:
+				decoder_name = "h264_mediacodec";
+				break;
+			case AV_CODEC_ID_HEVC:
+				decoder_name = "hevc_mediacodec";
+				break;
+			default:
+				log.warn("format(%d) not support hw decoded {}", avcodec_get_name(codec->codec_id));
+		}
+
+		const AVCodec *media_codec = avcodec_find_decoder_by_name(decoder_name.c_str());
+		if (!media_codec) {
+			log.warn("Could not find decoder '{}'", decoder_name);
+		} else {
+			// auto hw_config = avcodec_get_hw_config(mediacodec, i);
+			for (int i = 0;; ++i) {
+				const AVCodecHWConfig *config = avcodec_get_hw_config(media_codec, i);
+				if (!config) {
+					log.error("Decoder: {} does not support device type: {}", media_codec->name,
+							av_hwdevice_get_type_name(media_codec_type));
+					break;
+				}
+				if (config->methods & AV_CODEC_HW_CONFIG_METHOD_HW_DEVICE_CTX && config->device_type == media_codec_type) {
+					// AV_PIX_FMT_MEDIACODEC(165)
+					auto hw_pix_fmt = config->pix_fmt;
+					log.info("Decoder: {} support device type: {}, hw_pix_fmt: {}, AV_PIX_FMT_MEDIACODEC: {}", media_codec->name,
+							av_hwdevice_get_type_name(media_codec_type), av_get_pix_fmt_name(hw_pix_fmt), av_get_pix_fmt_name(AV_PIX_FMT_MEDIACODEC));
+					hw_configs.push_back(config);
+					break;
+				}
+			}
+		}
+	}
+// }
+//// end android
+#endif
+
 	int i = 0;
 	const AVCodecHWConfig *hw_config = nullptr;
 	while ((hw_config = avcodec_get_hw_config(decoder, i++)) != nullptr) {
@@ -274,90 +345,117 @@ AvCodecContextPtr AvPlayer::create_video_codec_context() {
 	}
 
 	if (hw_configs.empty()) {
-		log.error("no supported hw acceleration found");
-		return {};
-	}
+		log.warn("no supported hw acceleration found, will use software decoding");
+	} else {
+		// init HW decoding
+		AVBufferRef *hw_device = nullptr;
+		auto create_hw_device = [&](const AVCodecHWConfig *conf) {
+			log.verbose("attempting to create hw device '{}'", av_hwdevice_get_type_name(conf->device_type));
 
-	AVBufferRef *hw_device = nullptr;
-	auto create_hw_device = [&](const AVCodecHWConfig *conf) {
-		log.verbose("attempting to create hw device '{}'", av_hwdevice_get_type_name(conf->device_type));
+			if (!ff_ok(av_hwdevice_ctx_create(&hw_device, conf->device_type, nullptr, nullptr, 0))) {
+				if (hw_device) {
+					av_buffer_unref(&hw_device);
+					hw_device = nullptr;
+				}
+			}
 
-		if (!ff_ok(av_hwdevice_ctx_create(&hw_device, conf->device_type, nullptr, nullptr, 0))) {
 			if (hw_device) {
-				av_buffer_unref(&hw_device);
-				hw_device = nullptr;
+				log.verbose("created hw device: '{}'", av_hwdevice_get_type_name(conf->device_type));
+				output_settings.video_hw_type = conf->device_type;
+				hw_config = conf;
+				return true;
+			}
+			log.warn("could not create device");
+			return false;
+		};
+
+		if (output_settings_requested.video_hw_type != AV_HWDEVICE_TYPE_NONE) {
+			for (const auto &hw : hw_configs) {
+				if (hw->device_type == output_settings.video_hw_type) {
+					if (!create_hw_device(hw)) {
+						log.warn("Could not create requested hw device type: {}", av_hwdevice_get_type_name(hw->device_type));
+					}
+					break;
+				}
+			}
+		}
+
+		if (!hw_device) {
+			log.verbose("request hw device was not created, attempt autodetect");
+			for (const auto &hw : hw_configs) {
+				if (create_hw_device(hw)) {
+					break;
+				}
 			}
 		}
 
 		if (hw_device) {
-			log.verbose("created hw device: '{}'", av_hwdevice_get_type_name(conf->device_type));
-			output_settings.video_hw_type = conf->device_type;
-			hw_config = conf;
-			return true;
-		}
-		log.warn("could not create device");
-		return false;
-	};
+			log.verbose("allocate hw device");
 
-	if (output_settings_requested.video_hw_type != AV_HWDEVICE_TYPE_NONE) {
-		for (const auto &hw : hw_configs) {
-			if (hw->device_type == output_settings.video_hw_type) {
-				if (!create_hw_device(hw)) {
-					log.warn("Could not create requested hw device type: {}", av_hwdevice_get_type_name(hw->device_type));
+			if (output_settings.video_hw_type == AV_HWDEVICE_TYPE_MEDIACODEC) {
+#ifdef BUILD_ANDROID
+				log.info("Init mediacodec hw device on android");
+
+				// auto jni = gav_get_jnienv();
+				// if (!jni) {
+				// 	log.error("jni not set!!!!!");
+				// 	exit(1);
+				// }
+				av_jni_set_java_vm(gav_get_jnivm(), nullptr);
+
+				codec->hw_device_ctx = hw_device;
+				auto media_codec_ctx = av_mediacodec_alloc_context(); // TODO: cleanup!!
+				auto window_handle = godot::DisplayServer::get_singleton()->window_get_native_handle(godot::DisplayServer::WINDOW_HANDLE);
+				if (!ff_ok(av_mediacodec_default_init(codec.get(), media_codec_ctx, reinterpret_cast<void *>(window_handle)), "av_mediacodec_default_init")) {
+					log.warn("using software decoding");
+					codec->hw_device_ctx = nullptr;
 				}
-				break;
+#else
+				log.error("hw device type is mediacodec but library is not built for android. this should not happen!");
+				return {};
+#endif
+			} else {
+				auto video_hw_frames_ref = av_hwframe_ctx_alloc(hw_device);
+				output_settings.video_hw_enabled = true;
+
+				auto *ctx = reinterpret_cast<AVHWFramesContext *>(video_hw_frames_ref->data);
+				ctx->format = hw_config->pix_fmt;
+				ctx->width = codec->width;
+				ctx->height = codec->height;
+				ctx->sw_format = codec->sw_pix_fmt;
+
+				// detect valid sw formats
+				AVHWFramesConstraints *hw_frames_const = av_hwdevice_get_hwframe_constraints(hw_device, nullptr);
+				for (AVPixelFormat *p = hw_frames_const->valid_sw_formats;
+						*p != AV_PIX_FMT_NONE; p++) {
+					log.verbose("HW decoder pixel supported pixel format: {}", av_get_pix_fmt_name(*p));
+					if (ctx->sw_format == AV_PIX_FMT_NONE || *p == AV_PIX_FMT_YUV420P) {
+						ctx->sw_format = *p;
+					}
+				}
+
+				log.verbose("HW decoder using pixel format: {}", av_get_pix_fmt_name(ctx->sw_format));
+
+				if (!ff_ok(av_hwframe_ctx_init(video_hw_frames_ref))) {
+					log.error("Could not initialize hw frame");
+				} else {
+					codec->hw_device_ctx = hw_device;
+					codec->hw_frames_ctx = video_hw_frames_ref;
+					// video_codec->pix_fmt = ctx;
+				}
+
+				if (!codec->hw_device_ctx || !codec->hw_frames_ctx->data) {
+					output_settings.video_hw_enabled = false;
+					output_settings_requested.video_hw_type = AV_HWDEVICE_TYPE_NONE;
+					//log.warn("could not allocate hw device, will use software decoder. this is going to be slow");
+					return {};
+				}
 			}
 		}
 	}
+	// }
 
-	if (!hw_device) {
-		log.verbose("request hw device was not created, attempt autodetect");
-		for (const auto &hw : hw_configs) {
-			if (create_hw_device(hw)) {
-				break;
-			}
-		}
-	}
-
-	if (hw_device) {
-		log.verbose("allocate hw device");
-		auto video_hw_frames_ref = av_hwframe_ctx_alloc(hw_device);
-		output_settings.video_hw_enabled = true;
-
-		auto *ctx = reinterpret_cast<AVHWFramesContext *>(video_hw_frames_ref->data);
-		ctx->format = hw_config->pix_fmt;
-		ctx->width = codec->width;
-		ctx->height = codec->height;
-		ctx->sw_format = codec->sw_pix_fmt;
-
-		// detect valid sw formats
-		AVHWFramesConstraints *hw_frames_const = av_hwdevice_get_hwframe_constraints(hw_device, nullptr);
-		for (AVPixelFormat *p = hw_frames_const->valid_sw_formats;
-				*p != AV_PIX_FMT_NONE; p++) {
-			log.verbose("HW decoder pixel supported pixel format: {}", av_get_pix_fmt_name(*p));
-			if (ctx->sw_format == AV_PIX_FMT_NONE || *p == AV_PIX_FMT_YUV420P) {
-				ctx->sw_format = *p;
-			}
-		}
-
-		log.verbose("HW decoder using pixel format: {}", av_get_pix_fmt_name(ctx->sw_format));
-
-		if (!ff_ok(av_hwframe_ctx_init(video_hw_frames_ref))) {
-			log.error("Could not initialize hw frame");
-		} else {
-			codec->hw_device_ctx = hw_device;
-			codec->hw_frames_ctx = video_hw_frames_ref;
-			// video_codec->pix_fmt = ctx;
-		}
-	}
-
-	if (!codec->hw_device_ctx || !codec->hw_frames_ctx->data) {
-		output_settings.video_hw_enabled = false;
-		output_settings_requested.video_hw_type = AV_HWDEVICE_TYPE_NONE;
-		//log.warn("could not allocate hw device, will use software decoder. this is going to be slow");
-		return {};
-	}
-
+	log.verbose("finally open the decoder");
 	if (!ff_ok(avcodec_open2(codec.get(), decoder, nullptr))) {
 		log.error("Could not open video decoder");
 		return {};
@@ -597,7 +695,6 @@ bool AvPlayer::read_next_frames() {
 
 bool AvPlayer::frame_received(const AvFramePtr &frame, const int stream_index) {
 	// find millis of frame
-
 	if (stream_index == video_stream_index.value()) {
 		return video_frame_received(frame);
 	}

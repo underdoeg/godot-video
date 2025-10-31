@@ -25,8 +25,9 @@ cmake --build . --target godot-video
 mkdir build-integrated
 cd build-integrated
 cmake ..
-cmake --build . --target libx264 libx265 zlib xz bzip2 ffnvenc ffmpeg
-cmake --build . --target godot-video
+cmake --build . --target libx264 libx265 zlib xz bzip2 ffnvenc
+cmake --build . --target ffmpeg
+cmake --build . --target gav
 ```
 
 ### Build for godot with vulkan video extensions enabled
@@ -35,8 +36,9 @@ cmake --build . --target godot-video
 mkdir build-vkvideo
 cd build-vkvideo
 cmake -DUSE_GODOT_PATCHED=ON ..
-cmake --build . --target libx264 libx265 zlib xz bzip2 ffnvenc ffmpeg
-cmake --build . --target godot-video
+cmake --build . --target libx264 libx265 zlib xz bzip2 ffnvenc
+cmake --build . --target ffmpeg
+cmake --build . --target gav
 ```
 
 On intel vulkan video api is behind a flag. Launch with
@@ -48,9 +50,11 @@ ANV_VIDEO_DECODE=1 ./godot.linuxbsd.editor.x86_64 --main-pack something.pck
 ### Build for android
 ** needs prebuilt static androif ffmpeg libs in android ffmpeg (eg see https://github.com/Javernaut/ffmpeg-android-maker) **
 ```
-mkdir build-android
-cmake -DBUILD_ANDROID=ON ..
-cmake --build . --target godot-video-android
+# mkdir build-android
+# cmake -DBUILD_ANDROID=ON ..
+# cmake --build . --target godot-video-android
+cd android
+gradle assemble
 ```
 
 ## Notes
