@@ -66,9 +66,9 @@ void init() {
 	{
 		const auto key = p(k_reuse_decoders);
 		if (!ps->has_setting(key)) {
-			ps->set_setting(key, true);
+			ps->set_setting(key, false);
 		}
-		ps->set_initial_value(key, true);
+		ps->set_initial_value(key, false);
 		Dictionary info;
 		info.set("name", key);
 		info.set("type", Variant::BOOL);
