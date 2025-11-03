@@ -409,6 +409,34 @@ AvCodecContextPtr AvPlayer::create_video_codec_context() {
 				if (!ff_ok(av_mediacodec_default_init(codec.get(), media_codec_ctx, reinterpret_cast<void *>(window_handle)), "av_mediacodec_default_init")) {
 					log.warn("using software decoding");
 					codec->hw_device_ctx = nullptr;
+				} else {
+					output_settings.video_hw_enabled = true;
+					auto video_hw_frames_ref = av_hwframe_ctx_alloc(hw_device);
+					auto *ctx = reinterpret_cast<AVHWFramesContext *>(video_hw_frames_ref->data);
+					ctx->format = hw_config->pix_fmt;
+					ctx->width = codec->width;
+					ctx->height = codec->height;
+					ctx->sw_format = codec->sw_pix_fmt;
+
+					if (!ff_ok(av_hwframe_ctx_init(video_hw_frames_ref))) {
+						log.error("Could not initialize hw frame");
+					} else {
+						codec->hw_device_ctx = hw_device;
+						codec->hw_frames_ctx = video_hw_frames_ref;
+						// video_codec->pix_fmt = ctx;
+					}
+
+					// detect valid sw formats
+					// AVHWFramesConstraints *hw_frames_const = av_hwdevice_get_hwframe_constraints(hw_device, nullptr);
+					// for (AVPixelFormat *p = hw_frames_const->valid_sw_formats;
+					// 		*p != AV_PIX_FMT_NONE; p++) {
+					// 	log.verbose("HW decoder pixel supported pixel format: {}", av_get_pix_fmt_name(*p));
+					// 	if (ctx->sw_format == AV_PIX_FMT_NONE || *p == AV_PIX_FMT_YUV420P) {
+					// 		ctx->sw_format = *p;
+					// 	}
+					// }
+					//
+					// log.verbose("HW decoder using pixel format: {}", av_get_pix_fmt_name(ctx->sw_format));
 				}
 #else
 				log.error("hw device type is mediacodec but library is not built for android. this should not happen!");
