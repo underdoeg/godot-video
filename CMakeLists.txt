@@ -401,7 +401,7 @@ else ()
     message("-- using bundled ffmpeg")
     target_include_directories(${LIBNAME} PRIVATE ${LIBS_INCLUDE}) #${CMAKE_BINARY_DIR}/ffmpeg/src/ffmpeg
     target_link_directories(${LIBNAME} PRIVATE ${LIBS_LINK})
-    target_link_options(${LIBNAME} PRIVATE -static-libgcc -static-libstdc++ -pthread -static)
+#    target_link_options(${LIBNAME} PRIVATE -static-libgcc -static-libstdc++ -pthread -static)
     target_link_libraries(${LIBNAME} PRIVATE godot-cpp
             libavformat.a libavcodec.a libavdevice.a libavutil.a libavfilter.a libswscale.a swresample.a
             x264.a x265.a lzma.a bz2_static.a z.a
