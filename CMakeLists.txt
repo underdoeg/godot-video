@@ -245,7 +245,7 @@ if (NOT BUILD_ANDROID)
     ExternalProject_Add(
             ffmpeg
             GIT_REPOSITORY https://github.com/FFmpeg/FFmpeg.git
-            GIT_TAG release/8.0
+            GIT_TAG release/8.1
             GIT_SHALLOW true
             PREFIX ${FFMPEG_DIR}
             INSTALL_DIR ${LIBS_INSTALL}
@@ -274,7 +274,7 @@ FetchContent_Declare(
         godot-cpp
         GIT_REPOSITORY https://github.com/godotengine/godot-cpp.git
         # GIT_TAG 1421ba26ad045fb23b35ad7360cf5b2f1de55738
-        GIT_TAG 4.4
+        GIT_TAG master
 )
 FetchContent_MakeAvailable(godot-cpp)
 #if(NOT godot-cpp_POPULATED)
@@ -401,6 +401,7 @@ else ()
     message("-- using bundled ffmpeg")
     target_include_directories(${LIBNAME} PRIVATE ${LIBS_INCLUDE}) #${CMAKE_BINARY_DIR}/ffmpeg/src/ffmpeg
     target_link_directories(${LIBNAME} PRIVATE ${LIBS_LINK})
+    target_link_options(${LIBNAME} PRIVATE -static-libgcc -static-libstdc++ -pthread -static)
     target_link_libraries(${LIBNAME} PRIVATE godot-cpp
             libavformat.a libavcodec.a libavdevice.a libavutil.a libavfilter.a libswscale.a swresample.a
             x264.a x265.a lzma.a bz2_static.a z.a

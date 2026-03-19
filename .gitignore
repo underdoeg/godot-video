@@ -71,3 +71,4 @@ CMakeUserPresets.json
 /androidtest/
 /demo/addons/gav/*.uid
 /demo/addons/gav/*/
+demo/exports/*

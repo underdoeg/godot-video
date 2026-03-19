@@ -117,7 +117,7 @@ void GAVTexture::set_transparent() const {
 	// }
 	pixels.resize(info.width * info.height * 4);
 
-	auto ptr = pixels.ptrw();
+	// auto ptr = pixels.ptrw();
 	// for (int i = 0; i < info.width * info.height * 4; i+=4) {
 	// 	// pixels.ptrw()[i] = rand() % 256;
 	// 	ptr[i] = 0;
@@ -126,6 +126,9 @@ void GAVTexture::set_transparent() const {
 	// 	ptr[i + 3] = 127;
 	// }
 	conversion_rd->texture_update(texture_rid, 0, pixels);
+
+	// conversion_rd->texture_get_native_handle()
+
 }
 
 bool GAVTexture::setup_pipeline(AVPixelFormat pixel_format, AVColorSpace color_space) {

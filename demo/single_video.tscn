@@ -1,9 +1,9 @@
-[gd_scene load_steps=3 format=3 uid="uid://b568gxnsliogt"]
+[gd_scene format=3 uid="uid://b568gxnsliogt"]
 
 [ext_resource type="Script" uid="uid://dcj2ph8clyi0n" path="res://single_video.gd" id="1_phvak"]
-[ext_resource type="VideoStream" uid="uid://dl74qrmvaxdpp" path="res://prolog_DE.mp4" id="2_phvak"]
+[ext_resource type="VideoStream" uid="uid://bsc1w1dujjeo0" path="res://ltc.mov" id="2_phvak"]
 
-[node name="SingleVideo" type="ColorRect"]
+[node name="SingleVideo" type="ColorRect" unique_id=916363875]
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -12,7 +12,7 @@ grow_vertical = 2
 color = Color(0, 0, 0, 1)
 script = ExtResource("1_phvak")
 
-[node name="player" type="VideoStreamPlayer" parent="."]
+[node name="player" type="VideoStreamPlayer" parent="." unique_id=592708446]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
