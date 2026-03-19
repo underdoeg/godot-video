@@ -165,6 +165,7 @@ private:
 	AvCodecs::ResultType init();
 	AvCodecs::ResultType init_video();
 	AvCodecs::ResultType init_audio();
+	AvCodecs::ResultType init_audio_resampler(AVChannelLayout *in_ch_layout = nullptr, AVSampleFormat in_sample_fmt = AVSampleFormat::AV_SAMPLE_FMT_NONE, int in_sample_rate = 0);
 	AvCodecContextPtr create_video_codec_context();
 	AvCodecContextPtr create_audio_codec_context();
 
@@ -234,8 +235,7 @@ public:
 
 	double position_seconds() {
 		return position_millis / 1000.0;
-	}
-	;
+	};
 	void shutdown() {
 		add_command(SHUTDOWN);
 	}

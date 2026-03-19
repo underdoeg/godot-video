@@ -18,6 +18,7 @@ extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
 #include <libavutil/channel_layout.h>
+#include <libavutil/opt.h>
 #include <libavutil/pixdesc.h>
 }
 
@@ -121,7 +122,7 @@ void AvPlayer::fill_file_info() {
 
 static void av_log_callback(void *ptr, int level, const char *fmt, va_list vargs) {
 	// vprintf(fmt, vargs);
-	if (!level < AV_LOG_WARNING)
+	if (level > AV_LOG_WARNING)
 		return;
 	const auto size = 1024;
 	static char output_buffer[size];
@@ -150,9 +151,9 @@ bool AvPlayer::load(const AvPlayerLoadSettings &settings) {
 	log.verbose("Begin loading of {}", file_path.string());
 
 	AVDictionary *options = nullptr;
-	av_dict_set(&options, "loglevel", "debug", 0);
-	// av_log_set_level(AV_LOG_DEBUG);
-	av_log_set_level(AV_LOG_ERROR);
+	av_dict_set(&options, "loglevel", "debug", 1);
+	av_log_set_level(AV_LOG_DEBUG);
+	// av_log_set_level(AV_LOG_ERROR);
 	av_log_set_callback(av_log_callback);
 	if (!ff_ok(avformat_open_input(&fmt_ctx, file_path.c_str(), nullptr, &options))) {
 		log.error("avformat_open_input failed");
@@ -208,6 +209,11 @@ bool AvPlayer::load(const AvPlayerLoadSettings &settings) {
 	playing = true;
 
 	filepath_loaded = file_path;
+
+	if (audio_resampler) {
+		swr_free(&audio_resampler);
+		audio_resampler = nullptr;
+	}
 
 	if (res == AvCodecs::AGAIN) {
 		log.info("will try to init again");
@@ -554,21 +560,79 @@ AvCodecs::ResultType AvPlayer::init_audio() {
 
 	audio_codec = codec;
 
-	if (!audio_resampler) {
-		// create the resampler
-		swr_alloc_set_opts2(&audio_resampler,
-				&audio_codec->ch_layout,
-				output_settings.audio_sample_fmt,
-				output_sample_rate,
-				&audio_codec->ch_layout, audio_codec->sample_fmt, audio_codec->sample_rate,
-				0, nullptr);
-		if (!ff_ok(swr_init(audio_resampler))) {
-			log.error("Could not initialize audio resampler");
-			return AvCodecs::ERROR;
-		}
-	}
+	// if (!audio_resampler) {
+	// 	if (init_audio_resampler() != AvCodecs::OK) {
+	// 		log.error("Could not initialize audio resampler");
+	// 		return AvCodecs::ERROR;
+	// 	}
+	// }
 
 	log.verbose("end init_audio");
+	return AvCodecs::OK;
+}
+
+AvCodecs::ResultType AvPlayer::init_audio_resampler(AVChannelLayout *in_ch_layout, AVSampleFormat in_sample_fmt, int in_sample_rate) {
+	if (audio_resampler) {
+		swr_free(&audio_resampler);
+		audio_resampler = nullptr;
+	}
+
+	// pick from codec if not provided with input formats
+	if (!in_ch_layout) {
+		in_ch_layout = &audio_codec->ch_layout;
+	}
+	if (in_sample_fmt == AVSampleFormat::AV_SAMPLE_FMT_NONE) {
+		in_sample_fmt = audio_codec->sample_fmt;
+	}
+	if (!in_sample_rate) {
+		in_sample_rate = audio_codec->sample_rate;
+	}
+
+	// if (in_sample_fmt == output_settings.audio_sample_fmt && in_sample_rate == output_sample_rate) {
+	// 	log.info("[Audio] no resampling needed, input format is same as requested output");
+	// 	return AvCodecs::OK;
+	// }
+
+	// if (in_ch_layout->order == AV_CHANNEL_ORDER_UNSPEC) {
+	// 	// in_ch_layout->order = AV_CHANNEL_ORDER_NATIVE;
+	// 	av_channel_layout_default(in_ch_layout, in_ch_layout->nb_channels);
+	// }
+
+	int out_sample_rate = output_sample_rate;
+
+	AVChannelLayout *out_channel_layout = in_ch_layout;
+	// out_channel_layout.nb_channels = 2;
+	// out_channel_layout = AV_CH_LAYOUT_STEREO;
+
+	log.info("[Audio] create swr resampler - INPUT = channels: {}, fmt: {}, rate: {} - OUTPUT = channels: {}, fmt: {}, rate: {}",
+			in_ch_layout->nb_channels, av_get_sample_fmt_name(in_sample_fmt), in_sample_rate,
+			out_channel_layout->nb_channels, av_get_sample_fmt_name(output_settings.audio_sample_fmt), out_sample_rate);
+
+	// create the resampler
+	// if (!ff_ok(swr_alloc_set_opts2(&audio_resampler,
+	// 			out_channel_layout,
+	// 			output_settings.audio_sample_fmt,
+	// 			out_sample_rate,
+	// 			in_ch_layout,
+	// 			in_sample_fmt,
+	// 			in_sample_rate,
+	// 			0, nullptr))) {
+	// 	log.error("could not allocate swr ctx");
+	// }
+
+	// same as above
+	audio_resampler = swr_alloc();
+	av_opt_set_chlayout(audio_resampler, "in_chlayout", in_ch_layout, 0);
+	av_opt_set_chlayout(audio_resampler, "out_chlayout", out_channel_layout, 0);
+	av_opt_set_int(audio_resampler, "in_sample_rate", in_sample_rate, 0);
+	av_opt_set_int(audio_resampler, "out_sample_rate", out_sample_rate, 0);
+	av_opt_set_int(audio_resampler, "in_sample_fmt", in_sample_fmt, 0);
+	av_opt_set_int(audio_resampler, "out_sample_fmt", output_settings.audio_sample_fmt, 0);
+
+	if (!ff_ok(swr_init(audio_resampler))) {
+		log.error("Could not initialize audio resampler");
+		return AvCodecs::ERROR;
+	}
 	return AvCodecs::OK;
 }
 
@@ -610,7 +674,7 @@ void AvPlayer::emit_audio_frame(const AvAudioFrame &frame) {
 	}
 	// log.info("format: ")
 	AvAudioFrame target = frame;
-	if (audio_frames_to_reuse.size()) {
+	if (!audio_frames_to_reuse.empty()) {
 		target.frame = audio_frames_to_reuse.front();
 		audio_frames_to_reuse.pop_front();
 	} else {
@@ -618,11 +682,38 @@ void AvPlayer::emit_audio_frame(const AvAudioFrame &frame) {
 	}
 
 	target.frame->format = output_settings.audio_sample_fmt;
-	target.frame->ch_layout = frame.frame->ch_layout;
+
+	if (frame.frame->ch_layout.order == AV_CHANNEL_ORDER_UNSPEC) {
+		// this is weird and looks potentially like an ffmpeg bug?, but see:
+		// https://stackoverflow.com/questions/77502983/libswresample-why-does-swr-init-change-in-ch-layout-order-so-it-no-longer-m
+		av_channel_layout_default(&frame.frame->ch_layout, frame.frame->ch_layout.nb_channels);
+	}
+
+	av_channel_layout_copy(&target.frame->ch_layout, &frame.frame->ch_layout);
 	target.frame->sample_rate = output_settings.audio_sample_rate;
 	target.frame->nb_samples = frame.frame->nb_samples;
 
+	if (!audio_resampler) {
+		if (init_audio_resampler(&frame.frame->ch_layout, static_cast<AVSampleFormat>(frame.frame->format), frame.frame->sample_rate) != AvCodecs::OK) {
+			log.error("Could not initialize audio resampler");
+			return;
+		}
+	}
+
+	// if (av_channel_layout_compare(&audio_resampler->in_ch_layout, &ch_layout) ||
+	if (output_settings.audio_sample_rate != frame.frame->sample_rate) {
+		log.error("Audio sample rate doesn't match");
+	}
+	// if (output_settings.audio_sample_fmt != frame.frame->format) {
+	// log.error("Audio sample format mismatch - in: {}", av_get_sample_fmt_name(frame.frame->format), );
+	// }
+
 	if (!ff_ok(swr_convert_frame(audio_resampler, target.frame.get(), frame.frame.get()), "swr_convert_frame")) {
+		// try again
+		if (audio_resampler) {
+			swr_free(&audio_resampler);
+			audio_resampler = nullptr;
+		}
 		return;
 	}
 
