@@ -2,10 +2,13 @@ extends Control
 @onready var player = $player
 
 func _ready():
-	# player.stream = load("/invalid.mp4")
-	var stream:GAVStream = player.stream
+	var stream:GAVStream = load("res://ST_UHD_30p_H264_Gitter_Kreise_Ton_5_1.mp4")
 	stream.finished.connect(func():print("done"))
-	pass
+	stream.timecode_enabled = true
+	stream.timecode_user_data = 666;
+	player.stream = stream
+	player.play()
+
 	
 func _process(_delta):
 	pass

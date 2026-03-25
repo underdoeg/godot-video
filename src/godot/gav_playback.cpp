@@ -236,75 +236,11 @@ void convert_audio_samples(ltcsnd_sample_t *outbuffer, uint8_t **inbuffer, uint3
 }
 
 void GAVPlayback::on_audio_frame(const AvAudioFrame &frame) {
-	// read the ltc code
-	// if (!ltc_decoder) {
-	// 	ltc_decoder = ltc_decoder_create(file_info.audio.sample_rate * file_info.time_base.den / std::max(file_info.time_base.num, 1), 160000);
-	// 	log.info("ltc decoder created");
-	// }
-	//
-	// LTCFrameExt ltc_frame;
-	// ltcsnd_sample_t ltcsamples[frame.frame->nb_samples];
-	// convert_audio_samples(ltcsamples, frame.frame->data, frame.frame->nb_samples, 1, AV_SAMPLE_FMT_FLT);
-	// ltc_decoder_write(ltc_decoder, ltcsamples, frame.frame->nb_samples, 0);
-	//
-	// while (ltc_decoder_read(ltc_decoder, &ltc_frame)) {
-	// 	SMPTETimecode stime;
-	// 	ltc_frame_to_time(&stime, &ltc_frame.ltc, false);
-	// 	// log.info(ltc_frame.ltc.user1);
-	// 	// log.info(ltc_frame.ltc.user2);
-	// 	// log.info(ltc_frame.ltc.user3);
-	// 	// log.info(ltc_frame.ltc.user4);
-	// 	log.info(ltc_frame_get_user_bits(&ltc_frame.ltc));
-	// 	// log.info("SALI");
-	// }
-	//
-	// // LTCFrameExt ltc_frame;
-	// // ltcsnd_sample_t sound[1024];
-	// // ltc_decoder_write_float(ltc_decoder, reinterpret_cast<float *>(frame.frame->data[0]), frame.frame->nb_samples, 0);
-	// //
-	// // if (!ltc_decoder_read(ltc_decoder, &ltc_frame)) {
-	// // log.error("ltc decoder read failed");
-	// // }
-	// //
-	// // while (ltc_decoder_read(ltc_decoder, &ltc_frame)) {
-	// // 	SMPTETimecode ltc_timecode;
-	// // 	ltc_frame_to_time(&ltc_timecode, &ltc_frame.ltc, 1);
-	// // 	log.info(ltc_timecode.secs);
-	// // }
-
-	// if (!ltc_encoder) {
-	// 	ltc_encoder = ltc_encoder_create(av->sample_rate(), file_info.video.frame_rate, LTC_TV_625_50, LTC_BGF_DONT_TOUCH);
-	// 	ltc_encoder_set_volume(ltc_encoder, -6.0);
-	//
-	// 	// ltc_encoder = std::make_shared();
-	// 	ltc_encoder_set_buffersize(ltc_encoder, av->sample_rate(), file_info.video.frame_rate);
-	// }
-	// SMPTETimecode timecode;
-	// auto seconds = std::chrono::duration_cast<std::chrono::seconds>(frame.millis).count();
-	// // auto microsec = std::chrono::duration_cast<std::chrono::microseconds>(frame.millis).count();
-	//
-	// sprintf(timecode.timezone, "%c%02d%02d", '+', 0, 0);
-	//
-	// timecode.hours = static_cast<int>(floor(seconds / 3600.0));
-	// timecode.mins = static_cast<int>(floor((seconds - 3600.0 * floor(seconds / 3600.0)) / 60.0));
-	// timecode.secs = static_cast<int>(floor(seconds)) % 60;
-	// const double frame_duration_millis = 1000.0 / file_info.video.frame_rate;
-	// timecode.frame = floor((frame.millis.count() % 1000) / frame_duration_millis);
-	//
-	// ltc_encoder_set_timecode(ltc_encoder, &timecode);
-	//
-	// ltcsnd_sample_t *buf;
-	// ltc_encoder_encode_frame(ltc_encoder);
-	// const auto len = ltc_encoder_get_bufferptr(ltc_encoder, &buf, 1);
-	//
-	// audio_buffer.resize(len);
-	//
-	// for (int i = 0; i < len; i++) {
-	// 	audio_buffer.ptrw()[i] = (buf[i] - 128.f) / 255.f; // / 255.f;
-	// }
-	// mix_audio(len, audio_buffer, 0);
-	//
-	// ltc_encoder_inc_timecode(ltc_encoder);
+	if (timecode_enabled)
+		return;
+	audio_buffer.resize(frame.byte_size / sizeof(float));
+	memcpy(audio_buffer.ptrw(), frame.frame->data[0], frame.byte_size);
+	mix_audio(frame.frame->nb_samples, audio_buffer, 0);
 }
 
 void GAVPlayback::_stop() {
@@ -379,6 +315,9 @@ Ref<Texture2D> GAVPlayback::_get_texture() const {
 }
 
 int32_t GAVPlayback::_get_channels() const {
+	if (timecode_enabled) {
+		return 1;
+	}
 	log.info("_get_channels ", file_info.audio.num_channels);
 	return file_info.audio.num_channels;
 }
@@ -435,6 +374,13 @@ void GAVPlayback::_update(double p_delta) {
 		av->process();
 	}
 
+	update_timecode();
+}
+
+void GAVPlayback::update_timecode() {
+	if (!timecode_enabled)
+		return;
+
 	if (next_timecode_gen > AvPlayer::Clock::now()) {
 		return;
 	}
@@ -477,14 +423,14 @@ void GAVPlayback::_update(double p_delta) {
 	ltc_encoder_encode_frame(ltc_encoder);
 
 	LTCFrame f;
-	int user_number = 550;
+	int user_number = timecode_user_data;
 	unsigned char user_bit_array[8];
 
 	for (int i = 0; i < 8; ++i) {
 		user_bit_array[i] = user_number % 10;
 		user_number /= 10;
 	}
-	ltc_encoder_get_frame (ltc_encoder, &f);
+	ltc_encoder_get_frame(ltc_encoder, &f);
 	f.user1 = user_bit_array[0];
 	f.user2 = user_bit_array[1];
 	f.user3 = user_bit_array[2];
@@ -493,7 +439,7 @@ void GAVPlayback::_update(double p_delta) {
 	f.user6 = user_bit_array[5];
 	f.user7 = user_bit_array[6];
 	f.user8 = user_bit_array[7];
-	ltc_encoder_set_frame (ltc_encoder, &f);
+	ltc_encoder_set_frame(ltc_encoder, &f);
 
 	ltcsnd_sample_t *buf;
 	// ltc_encoder_encode_frame(ltc_encoder);

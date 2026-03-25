@@ -49,8 +49,10 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 	void on_audio_frame(const AvAudioFrame &frame);
 	void set_file_info(const AvFileInfo &info);
 
+	void update_timecode();
+
 	// LTCDecoder* ltc_decoder = nullptr;
-	LTCEncoder* ltc_encoder = nullptr;
+	LTCEncoder *ltc_encoder = nullptr;
 	AvPlayer::Clock::time_point next_timecode_gen = AvPlayer::Clock::now();
 
 public:
@@ -58,6 +60,9 @@ public:
 	~GAVPlayback() override;
 
 	Callbacks callbacks;
+
+	std::atomic_bool timecode_enabled = false;
+	std::atomic_int timecode_user_data = 0;
 
 	bool load(const godot::String &p_path);
 
