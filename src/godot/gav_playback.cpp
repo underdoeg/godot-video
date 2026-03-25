@@ -389,7 +389,6 @@ int32_t GAVPlayback::_get_mix_rate() const {
 	log.info("_get_mix_rate ", av->sample_rate());
 	return av->sample_rate();
 }
-static AvPlayer::Clock::time_point next_timecode = AvPlayer::Clock::now();
 void GAVPlayback::_update(double p_delta) {
 	MEASURE_N("MAIN");
 	if (video_finished) {
@@ -436,6 +435,10 @@ void GAVPlayback::_update(double p_delta) {
 		av->process();
 	}
 
+	if (next_timecode_gen > AvPlayer::Clock::now()) {
+		return;
+	}
+
 	if (!av->position_seconds()) {
 		return;
 	}
@@ -447,8 +450,8 @@ void GAVPlayback::_update(double p_delta) {
 		ltc_encoder_set_user_bits(ltc_encoder, 500);
 	}
 
-	if (next_timecode > AvPlayer::Clock::now()) {
-		return;
+	if (!ltc_encoder) {
+		log.error("Could not create ltc encoder");
 	}
 
 	SMPTETimecode timecode;
@@ -480,5 +483,5 @@ void GAVPlayback::_update(double p_delta) {
 	}
 	mix_audio(len, audio_buffer, 0);
 
-	next_timecode += std::chrono::milliseconds(static_cast<int64_t>(frame_duration_millis));
+	next_timecode_gen += std::chrono::milliseconds(static_cast<int64_t>(frame_duration_millis));
 }
