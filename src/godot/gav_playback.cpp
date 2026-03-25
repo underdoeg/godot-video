@@ -447,7 +447,7 @@ void GAVPlayback::_update(double p_delta) {
 		log.info("create ltc encoder");
 		ltc_encoder = ltc_encoder_create(av->sample_rate(), file_info.video.frame_rate, LTC_TV_625_50, LTC_BGF_DONT_TOUCH);
 		ltc_encoder_set_volume(ltc_encoder, -3.0);
-		ltc_encoder_set_user_bits(ltc_encoder, 500);
+		ltc_encoder_set_user_bits(ltc_encoder, 550);
 	}
 
 	if (!ltc_encoder) {
