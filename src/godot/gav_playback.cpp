@@ -447,8 +447,10 @@ void GAVPlayback::_update(double p_delta) {
 		log.info("create ltc encoder");
 		ltc_encoder = ltc_encoder_create(av->sample_rate(), file_info.video.frame_rate, LTC_TV_625_50, LTC_BGF_DONT_TOUCH);
 		ltc_encoder_set_volume(ltc_encoder, -3.0);
-		log.info("set user bit to 450");
-		ltc_encoder_set_user_bits(ltc_encoder, 450);
+		// log.info("set user bit to 450");
+
+		// ltc_encoder_set_user_bits(ltc_encoder, 450);
+		// log.info("user bit is ", )
 	}
 
 	if (!ltc_encoder) {
@@ -473,8 +475,28 @@ void GAVPlayback::_update(double p_delta) {
 	ltc_encoder_set_timecode(ltc_encoder, &timecode);
 
 	ltc_encoder_encode_frame(ltc_encoder);
+
+	LTCFrame f;
+	int user_number = 450;
+	unsigned char user_bit_array[8];
+
+	for (int i = 0; i < 8; ++i) {
+		user_bit_array[i] = user_number % 10;
+		user_number /= 10;
+	}
+	ltc_encoder_get_frame (ltc_encoder, &f);
+	f.user1 = user_bit_array[0];
+	f.user2 = user_bit_array[1];
+	f.user3 = user_bit_array[2];
+	f.user4 = user_bit_array[3];
+	f.user5 = user_bit_array[4];
+	f.user6 = user_bit_array[5];
+	f.user7 = user_bit_array[6];
+	f.user8 = user_bit_array[7];
+	ltc_encoder_set_frame (ltc_encoder, &f);
+
 	ltcsnd_sample_t *buf;
-	ltc_encoder_encode_frame(ltc_encoder);
+	// ltc_encoder_encode_frame(ltc_encoder);
 	const auto len = ltc_encoder_get_bufferptr(ltc_encoder, &buf, 1);
 
 	audio_buffer.resize(len);
