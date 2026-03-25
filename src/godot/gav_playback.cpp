@@ -477,7 +477,7 @@ void GAVPlayback::_update(double p_delta) {
 	ltc_encoder_encode_frame(ltc_encoder);
 
 	LTCFrame f;
-	int user_number = 450;
+	int user_number = 550;
 	unsigned char user_bit_array[8];
 
 	for (int i = 0; i < 8; ++i) {
