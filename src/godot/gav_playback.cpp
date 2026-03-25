@@ -187,10 +187,124 @@ void GAVPlayback::on_video_frame(const AvVideoFrame &frame) const {
 	}
 	texture->update(frame);
 }
+
+void convert_audio_samples(ltcsnd_sample_t *outbuffer, uint8_t **inbuffer, uint32_t size, uint32_t channels, AVSampleFormat fmt, uint32_t channel = 0) {
+	switch (fmt) {
+		case AV_SAMPLE_FMT_S16P: {
+			int16_t *lbuf((int16_t *)(inbuffer[channel]));
+			for (uint32_t k = 0; k < size; ++k) {
+				outbuffer[k] = 128 + 0.00387573 * lbuf[k];
+			}
+			break;
+		}
+		case AV_SAMPLE_FMT_S16: {
+			int16_t *lbuf((int16_t *)(inbuffer[0]));
+			for (uint32_t k = 0; k < size; ++k) {
+				outbuffer[k] = 128 + 0.00387573 * lbuf[k * channels + channel];
+			}
+			break;
+		}
+		case AV_SAMPLE_FMT_U8: {
+			uint8_t *lbuf((uint8_t *)inbuffer);
+			for (uint32_t k = 0; k < size; ++k)
+				outbuffer[k] = lbuf[k * channels + channel];
+			break;
+		}
+		case AV_SAMPLE_FMT_S32: {
+			int32_t *lbuf((int32_t *)(inbuffer[0]));
+			for (uint32_t k = 0; k < size; ++k)
+				outbuffer[k] = 128 + 5.9139e-08 * lbuf[k * channels + channel];
+			break;
+		}
+		case AV_SAMPLE_FMT_FLT: {
+			float *lbuf((float *)(inbuffer[0]));
+			for (uint32_t k = 0; k < size; ++k)
+				outbuffer[k] = 128 + 127 * lbuf[k * channels + channel];
+			break;
+		}
+		case AV_SAMPLE_FMT_FLTP: {
+			float *lbuf((float *)(inbuffer[channel]));
+			for (uint32_t k = 0; k < size; ++k) {
+				outbuffer[k] = 128 + 127 * lbuf[k];
+			}
+			break;
+		}
+		default:
+			print_error("Unsupported sample format \"%s\".",
+					av_get_sample_fmt_name(fmt));
+	}
+}
+
 void GAVPlayback::on_audio_frame(const AvAudioFrame &frame) {
-	audio_buffer.resize(frame.byte_size / sizeof(float));
-	memcpy(audio_buffer.ptrw(), frame.frame->data[0], frame.byte_size);
-	mix_audio(frame.frame->nb_samples, audio_buffer, 0);
+	// read the ltc code
+	// if (!ltc_decoder) {
+	// 	ltc_decoder = ltc_decoder_create(file_info.audio.sample_rate * file_info.time_base.den / std::max(file_info.time_base.num, 1), 160000);
+	// 	log.info("ltc decoder created");
+	// }
+	//
+	// LTCFrameExt ltc_frame;
+	// ltcsnd_sample_t ltcsamples[frame.frame->nb_samples];
+	// convert_audio_samples(ltcsamples, frame.frame->data, frame.frame->nb_samples, 1, AV_SAMPLE_FMT_FLT);
+	// ltc_decoder_write(ltc_decoder, ltcsamples, frame.frame->nb_samples, 0);
+	//
+	// while (ltc_decoder_read(ltc_decoder, &ltc_frame)) {
+	// 	SMPTETimecode stime;
+	// 	ltc_frame_to_time(&stime, &ltc_frame.ltc, false);
+	// 	// log.info(ltc_frame.ltc.user1);
+	// 	// log.info(ltc_frame.ltc.user2);
+	// 	// log.info(ltc_frame.ltc.user3);
+	// 	// log.info(ltc_frame.ltc.user4);
+	// 	log.info(ltc_frame_get_user_bits(&ltc_frame.ltc));
+	// 	// log.info("SALI");
+	// }
+	//
+	// // LTCFrameExt ltc_frame;
+	// // ltcsnd_sample_t sound[1024];
+	// // ltc_decoder_write_float(ltc_decoder, reinterpret_cast<float *>(frame.frame->data[0]), frame.frame->nb_samples, 0);
+	// //
+	// // if (!ltc_decoder_read(ltc_decoder, &ltc_frame)) {
+	// // log.error("ltc decoder read failed");
+	// // }
+	// //
+	// // while (ltc_decoder_read(ltc_decoder, &ltc_frame)) {
+	// // 	SMPTETimecode ltc_timecode;
+	// // 	ltc_frame_to_time(&ltc_timecode, &ltc_frame.ltc, 1);
+	// // 	log.info(ltc_timecode.secs);
+	// // }
+
+	// if (!ltc_encoder) {
+	// 	ltc_encoder = ltc_encoder_create(av->sample_rate(), file_info.video.frame_rate, LTC_TV_625_50, LTC_BGF_DONT_TOUCH);
+	// 	ltc_encoder_set_volume(ltc_encoder, -6.0);
+	//
+	// 	// ltc_encoder = std::make_shared();
+	// 	ltc_encoder_set_buffersize(ltc_encoder, av->sample_rate(), file_info.video.frame_rate);
+	// }
+	// SMPTETimecode timecode;
+	// auto seconds = std::chrono::duration_cast<std::chrono::seconds>(frame.millis).count();
+	// // auto microsec = std::chrono::duration_cast<std::chrono::microseconds>(frame.millis).count();
+	//
+	// sprintf(timecode.timezone, "%c%02d%02d", '+', 0, 0);
+	//
+	// timecode.hours = static_cast<int>(floor(seconds / 3600.0));
+	// timecode.mins = static_cast<int>(floor((seconds - 3600.0 * floor(seconds / 3600.0)) / 60.0));
+	// timecode.secs = static_cast<int>(floor(seconds)) % 60;
+	// const double frame_duration_millis = 1000.0 / file_info.video.frame_rate;
+	// timecode.frame = floor((frame.millis.count() % 1000) / frame_duration_millis);
+	//
+	// ltc_encoder_set_timecode(ltc_encoder, &timecode);
+	//
+	// ltcsnd_sample_t *buf;
+	// ltc_encoder_encode_frame(ltc_encoder);
+	// const auto len = ltc_encoder_get_bufferptr(ltc_encoder, &buf, 1);
+	//
+	// audio_buffer.resize(len);
+	//
+	// for (int i = 0; i < len; i++) {
+	// 	audio_buffer.ptrw()[i] = (buf[i] - 128.f) / 255.f; // / 255.f;
+	// }
+	// mix_audio(len, audio_buffer, 0);
+	//
+	// ltc_encoder_inc_timecode(ltc_encoder);
 }
 
 void GAVPlayback::_stop() {
@@ -275,8 +389,7 @@ int32_t GAVPlayback::_get_mix_rate() const {
 	log.info("_get_mix_rate ", av->sample_rate());
 	return av->sample_rate();
 }
-
-
+static AvPlayer::Clock::time_point next_timecode = AvPlayer::Clock::now();
 void GAVPlayback::_update(double p_delta) {
 	MEASURE_N("MAIN");
 	if (video_finished) {
@@ -302,7 +415,6 @@ void GAVPlayback::_update(double p_delta) {
 			}
 		}
 		{
-			// TODO: audio
 			std::deque<AvAudioFrame> audio_frames;
 			{
 				std::scoped_lock lock(audio_mutex);
@@ -323,4 +435,50 @@ void GAVPlayback::_update(double p_delta) {
 		}
 		av->process();
 	}
+
+	if (!av->position_seconds()) {
+		return;
+	}
+
+	if (!ltc_encoder) {
+		log.info("create ltc encoder");
+		ltc_encoder = ltc_encoder_create(av->sample_rate(), file_info.video.frame_rate, LTC_TV_625_50, LTC_BGF_DONT_TOUCH);
+		ltc_encoder_set_volume(ltc_encoder, -3.0);
+		ltc_encoder_set_user_bits(ltc_encoder, 500);
+	}
+
+	if (next_timecode > AvPlayer::Clock::now()) {
+		return;
+	}
+
+	SMPTETimecode timecode;
+
+	// auto seconds = std::chrono::duration_cast<std::chrono::seconds>(av->position_seconds().millis).count();
+	// auto microsec = std::chrono::duration_cast<std::chrono::microseconds>(frame.millis).count();
+
+	auto seconds = av->position_seconds();
+
+	sprintf(timecode.timezone, "%c%02d%02d", '+', 0, 0);
+
+	timecode.hours = static_cast<int>(floor(seconds / 3600.0));
+	timecode.mins = static_cast<int>(floor((seconds - 3600.0 * floor(seconds / 3600.0)) / 60.0));
+	timecode.secs = static_cast<int>(floor(seconds)) % 60;
+	const double frame_duration_millis = 1000.0 / file_info.video.frame_rate;
+	timecode.frame = floor(static_cast<int>(floor(seconds * 1000)) % 1000 / frame_duration_millis);
+
+	ltc_encoder_set_timecode(ltc_encoder, &timecode);
+
+	ltc_encoder_encode_frame(ltc_encoder);
+	ltcsnd_sample_t *buf;
+	ltc_encoder_encode_frame(ltc_encoder);
+	const auto len = ltc_encoder_get_bufferptr(ltc_encoder, &buf, 1);
+
+	audio_buffer.resize(len);
+
+	for (int i = 0; i < len; i++) {
+		audio_buffer.ptrw()[i] = (buf[i] - 128.f) / 255.f; // / 255.f;
+	}
+	mix_audio(len, audio_buffer, 0);
+
+	next_timecode += std::chrono::milliseconds(static_cast<int64_t>(frame_duration_millis));
 }

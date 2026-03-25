@@ -40,6 +40,7 @@ struct AvFileInfo {
 	double duration_millis = 0;
 	AvVideoInfo video{};
 	AvAudioInfo audio{};
+	AVRational time_base = {};
 };
 
 struct AvWrapperLog {

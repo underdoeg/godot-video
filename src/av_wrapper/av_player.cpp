@@ -99,7 +99,11 @@ void AvPlayer::fill_file_info() {
 	if (video_stream_index && video_stream) {
 		file_info.video.width = video_stream->codecpar->width;
 		file_info.video.height = video_stream->codecpar->height;
+		file_info.time_base = video_stream->time_base;
 		file_info.video.frame_rate = av_q2d(video_stream->codecpar->framerate);
+		if (!file_info.video.frame_rate) {
+			file_info.video.frame_rate = av_q2d(video_stream->r_frame_rate);
+		}
 		file_info.video.codec_name = avcodec_get_name(video_stream->codecpar->codec_id);
 		auto seconds = std::chrono::duration<double>(static_cast<double>(video_stream->duration) * av_q2d(video_stream->time_base));
 		file_info.duration_millis = std::chrono::duration_cast<std::chrono::milliseconds>(seconds).count();

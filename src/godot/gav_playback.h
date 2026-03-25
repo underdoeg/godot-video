@@ -12,6 +12,10 @@
 #include <memory>
 #include <thread>
 
+extern "C" {
+#include <ltc.h>
+}
+
 class GAVPlayback : public godot::VideoStreamPlayback {
 	struct Callbacks {
 		std::function<void()> ended;
@@ -44,6 +48,9 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 	void on_video_frame(const AvVideoFrame &frame) const;
 	void on_audio_frame(const AvAudioFrame &frame);
 	void set_file_info(const AvFileInfo &info);
+
+	// LTCDecoder* ltc_decoder = nullptr;
+	LTCEncoder* ltc_encoder;
 
 public:
 	GAVPlayback();

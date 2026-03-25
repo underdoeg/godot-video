@@ -133,6 +133,43 @@ if (NOT BUILD_ANDROID)
             -DCMAKE_PREFIX_PATH=${BZIP2_DIR}
     )
 
+    set(LIBLTC_DIR ${CMAKE_BINARY_DIR}/libltc)
+    ExternalProject_Add(
+            libltc_external
+            GIT_REPOSITORY https://github.com/x42/libltc.git
+            GIT_TAG master
+            BUILD_IN_SOURCE 1
+            PREFIX ${CMAKE_BINARY_DIR}/libltc
+            CONFIGURE_COMMAND ./autogen.sh COMMAND ./configure --prefix=<INSTALL_DIR> --enable-static
+            #        CONFIGURE_COMMAND "cd <SOURCE_DIR> && sh autogen.sh && ./configure --prefix=<INSTALL_DIR>  --enable-static"
+            BUILD_COMMAND make
+            INSTALL_COMMAND make install
+            LOG_CONFIGURE 1
+            LOG_BUILD 1
+    )
+
+    ExternalProject_Get_Property(libltc_external INSTALL_DIR)
+    set(LIBLTC_INCLUDE_DIR ${INSTALL_DIR}/include)
+    set(LIBLTC_LIBRARY_DIR ${INSTALL_DIR}/lib)
+
+
+    set(LIBSNDFILE_DIR ${CMAKE_BINARY_DIR}/libsndfile)
+    ExternalProject_Add(
+            libsndfile_external
+            GIT_REPOSITORY https://github.com/libsndfile/libsndfile.git
+            GIT_TAG master #1.2.2
+            PREFIX ${CMAKE_BINARY_DIR}/libsndfile
+            CONFIGURE_COMMAND ${CMAKE_COMMAND} -S <SOURCE_DIR> -B <BINARY_DIR> -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR> -DBUILD_SHARED_LIBS=OFF -DENABLE_EXTERNAL_LIBS=OFF -DENABLE_MPEG=OFF
+            BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR>
+            INSTALL_COMMAND ${CMAKE_COMMAND} --install <BINARY_DIR>
+            LOG_CONFIGURE 1
+            LOG_BUILD 1
+    )
+
+    ExternalProject_Get_Property(libsndfile_external INSTALL_DIR)
+    set(LIBSNDFILE_INCLUDE_DIR ${INSTALL_DIR}/include)
+    set(LIBSNDFILE_LIBRARY_DIR ${INSTALL_DIR}/lib)
+
     ## WE need shared and static libs, static for final link, shared to have ffmpeg autodetect in configure work
 
     # LIBVA
@@ -399,9 +436,10 @@ elseif (USE_SYSTEM_FFMPEG)
     )
 else ()
     message("-- using bundled ffmpeg")
-    target_include_directories(${LIBNAME} PRIVATE ${LIBS_INCLUDE}) #${CMAKE_BINARY_DIR}/ffmpeg/src/ffmpeg
-    target_link_directories(${LIBNAME} PRIVATE ${LIBS_LINK})
-#    target_link_options(${LIBNAME} PRIVATE -static-libgcc -static-libstdc++ -pthread -static)
+#    add_dependencies(${LIBNAME} libltc_external libsndfile_external)
+    target_include_directories(${LIBNAME} PRIVATE ${LIBS_INCLUDE} ${LIBLTC_INCLUDE_DIR} ${LIBSNDFILE_INCLUDE_DIR}) #${CMAKE_BINARY_DIR}/ffmpeg/src/ffmpeg
+    target_link_directories(${LIBNAME} PRIVATE ${LIBS_LINK} ${LIBLTC_LIBRARY_DIR} ${LIBSNDFILE_LIBRARY_DIR})
+    #    target_link_options(${LIBNAME} PRIVATE -static-libgcc -static-libstdc++ -pthread -static)
     target_link_libraries(${LIBNAME} PRIVATE godot-cpp
             libavformat.a libavcodec.a libavdevice.a libavutil.a libavfilter.a libswscale.a swresample.a
             x264.a x265.a lzma.a bz2_static.a z.a
@@ -412,6 +450,7 @@ else ()
             # link system libva, no idea how to use the static libs platform independent
             X11 Xfixes
             vulkan aom fdk-aac mp3lame dav1d opus vdpau vorbis vorbisenc numa
+            libltc.a libsndfile.a
     )
 endif ()
 
