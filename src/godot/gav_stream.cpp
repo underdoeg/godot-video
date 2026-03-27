@@ -20,7 +20,6 @@ void GAVStream::_bind_methods() {
 }
 
 godot::Ref<VideoStreamPlayback> GAVStream::_instantiate_playback() {
-	UtilityFunctions::print(timecode_enabled);
 	UtilityFunctions::print("GAVStream::instantiate_playback()");
 	playback = memnew(GAVPlayback);
 	playback->load(get_file());

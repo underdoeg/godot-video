@@ -53,7 +53,10 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 
 	// LTCDecoder* ltc_decoder = nullptr;
 	LTCEncoder *ltc_encoder = nullptr;
-	AvPlayer::Clock::time_point next_timecode_gen = AvPlayer::Clock::now();
+	// AvPlayer::Clock::time_point next_timecode_gen = AvPlayer::Clock::now();
+	std::thread ltc_thread;
+	std::atomic_bool ltc_thread_request_stop;
+	double last_ltc_time = 0.0;
 
 public:
 	GAVPlayback();

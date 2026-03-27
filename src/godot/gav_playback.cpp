@@ -2,6 +2,7 @@
 #include "gav_settings.h"
 #include "gav_singleton.h"
 
+#include <chrono>
 #include <condition_variable>
 #include <filesystem>
 
@@ -23,13 +24,17 @@ GAVPlayback::GAVPlayback() {
 	AvPlayer::codecs.set_reusing_enabled(gav_settings::reuse_decoders());
 }
 GAVPlayback::~GAVPlayback() {
-	if (av) {
-		log.info("destruct");
-		av->shutdown();
+	ltc_thread_request_stop = true;
+	if (ltc_thread.joinable()) {
+		ltc_thread.join();
 	}
 	thread_keep_running = false;
 	if (thread.joinable()) {
 		thread.join();
+	}
+	if (av) {
+		log.info("destruct");
+		av->shutdown();
 	}
 }
 
@@ -39,6 +44,11 @@ bool GAVPlayback::load(const String &p_path) {
 	if (thread.joinable()) {
 		thread.join();
 	}
+
+	// if (ltc_thread.joinable()) {
+	// 	ltc_thread_request_stop = true;
+	// 	ltc_thread.join();
+	// }
 
 	keep_processing = true;
 
@@ -260,6 +270,29 @@ void GAVPlayback::_play() {
 		return;
 	keep_processing = true;
 	av->play();
+	if (timecode_enabled & !ltc_thread.joinable()) {
+		ltc_thread_request_stop = false;
+		ltc_thread = std::thread([&] {
+			log.info("start LTC thread");
+			// auto fps_start_time = std::chrono::high_resolution_clock::now();
+			// int frame_count = 0;
+			while (!ltc_thread_request_stop) {
+				// frame_count++;
+				// auto current_time = std::chrono::high_resolution_clock::now();
+				// auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(current_time - fps_start_time).count();
+				// if (elapsed >= 1000) {
+				// 	double fps = frame_count * 1000.0 / elapsed;
+				// 	log.info("LTC thread FPS: ", fps);
+				// 	fps_start_time = current_time;
+				// 	frame_count = 0;
+				// }
+
+				update_timecode();
+				std::this_thread::sleep_for(std::chrono::milliseconds(5));
+				// std::this_thread::sleep_until(next_timecode_gen);
+			}
+		});
+	}
 }
 
 void GAVPlayback::_set_paused(bool p_paused) {
@@ -373,21 +406,29 @@ void GAVPlayback::_update(double p_delta) {
 		}
 		av->process();
 	}
-
-	update_timecode();
 }
 
 void GAVPlayback::update_timecode() {
+	double frame_duration_millis = 1000.0 / 25.;
+	if (file_info.video.frame_rate > 0) {
+		frame_duration_millis = 1000.0 / file_info.video.frame_rate;
+	}
+	// next_timecode_gen = AvPlayer::Clock::now() + std::chrono::microseconds(static_cast<int64_t>(frame_duration_millis * 1000)/2);
+
 	if (!timecode_enabled)
 		return;
 
-	if (next_timecode_gen > AvPlayer::Clock::now()) {
+	double seconds = 0;
+	if (av) {
+		seconds = av->position_seconds();
+	}
+	if (seconds == last_ltc_time) {
 		return;
 	}
-
-	if (!av->position_seconds()) {
-		return;
-	}
+	last_ltc_time = seconds;
+	// if (position_seconds == 0) {
+	// return;
+	// }
 
 	if (!ltc_encoder) {
 		log.info("create ltc encoder");
@@ -408,14 +449,11 @@ void GAVPlayback::update_timecode() {
 	// auto seconds = std::chrono::duration_cast<std::chrono::seconds>(av->position_seconds().millis).count();
 	// auto microsec = std::chrono::duration_cast<std::chrono::microseconds>(frame.millis).count();
 
-	auto seconds = av->position_seconds();
-
 	sprintf(timecode.timezone, "%c%02d%02d", '+', 0, 0);
 
 	timecode.hours = static_cast<int>(floor(seconds / 3600.0));
 	timecode.mins = static_cast<int>(floor((seconds - 3600.0 * floor(seconds / 3600.0)) / 60.0));
 	timecode.secs = static_cast<int>(floor(seconds)) % 60;
-	const double frame_duration_millis = 1000.0 / file_info.video.frame_rate;
 	timecode.frame = floor(static_cast<int>(floor(seconds * 1000)) % 1000 / frame_duration_millis);
 
 	ltc_encoder_set_timecode(ltc_encoder, &timecode);
@@ -444,13 +482,12 @@ void GAVPlayback::update_timecode() {
 	ltcsnd_sample_t *buf;
 	// ltc_encoder_encode_frame(ltc_encoder);
 	const auto len = ltc_encoder_get_bufferptr(ltc_encoder, &buf, 1);
-
 	audio_buffer.resize(len);
-
 	for (int i = 0; i < len; i++) {
 		audio_buffer.ptrw()[i] = (buf[i] - 128.f) / 255.f; // / 255.f;
 	}
-	mix_audio(len, audio_buffer, 0);
-
-	next_timecode_gen += std::chrono::milliseconds(static_cast<int64_t>(frame_duration_millis));
+	auto rendered = 0;
+	while (rendered < len) {
+		rendered += mix_audio(len - rendered, audio_buffer, rendered);
+	}
 }

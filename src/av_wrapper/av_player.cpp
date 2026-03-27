@@ -838,7 +838,7 @@ bool AvPlayer::frame_needs_emit(const AvBaseFrame &f) const {
 		return false;
 	auto frame_time = start_time.value() + f.millis;
 	// auto due_in = frame_time - Clock::now();
-	return frame_time < Clock::now() + std::chrono::milliseconds(1000 / 60);
+	return frame_time <= Clock::now(); // + std::chrono::milliseconds(1000 / 60);
 }
 
 void AvPlayer::stop() {
