@@ -73,7 +73,8 @@ bool GAVPlayback::load(const String &p_path) {
 	if (gav_settings::use_vk_decoders()) {
 		settings.output.video_hw_type = AV_HWDEVICE_TYPE_VULKAN;
 		// attempt to create a hw device that uses the same as the godot rendering
-		settings.output.video_hw_device = av_vk_create_device(texture ? texture->get_conversion_rd() : nullptr);
+		// texture ? texture->get_conversion_rd() : nullptr
+		settings.output.video_hw_device = av_vk_create_device();
 	}
 	// settings.output.audio_sample_rate = 48000;
 
