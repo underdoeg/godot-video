@@ -30,16 +30,10 @@ cmake --build . --target ffmpeg
 cmake --build . --target gav
 ```
 
-### Build for godot with vulkan video extensions enabled
-**currently not working and only in the archive**
-```
-mkdir build-vkvideo
-cd build-vkvideo
-cmake -DUSE_GODOT_PATCHED=ON ..
-cmake --build . --target libx264 libx265 zlib xz bzip2 ffnvenc
-cmake --build . --target ffmpeg
-cmake --build . --target gav
-```
+### Use Vulkan Video decoding for higher performance
+
+Requires a custom godot build, then enable the setting in Project Settings -> Gav Video 
+https://github.com/TweaklabOrg/godot/tree/vk-video-extensions
 
 On intel vulkan video api is behind a flag. Launch with
 
