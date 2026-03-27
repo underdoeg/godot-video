@@ -271,7 +271,7 @@ bool av_vk_ctx_setup(AVVulkanDeviceContext *ctx, godot::RenderingDevice *rd) {
 #endif
 }
 
-AVBufferRef *hw_dev = nullptr;
+static AVBufferRef *hw_dev = nullptr;
 
 AVBufferRef *av_vk_create_device(RenderingDevice *rd) {
 	if (!rd) {
@@ -282,11 +282,18 @@ AVBufferRef *av_vk_create_device(RenderingDevice *rd) {
 		return hw_dev;
 	}
 
+	UtilityFunctions::print("Creating AV Vulkan device");
+
 	auto device_type = AV_HWDEVICE_TYPE_VULKAN;
 	hw_dev = av_hwdevice_ctx_alloc(device_type);
+	if (!hw_dev) {
+		UtilityFunctions::print("Failed to create Vulkan device.");
+		return nullptr;
+	}
 	auto hw_ctx = reinterpret_cast<AVHWDeviceContext *>(hw_dev->data);
 	auto *vk = static_cast<AVVulkanDeviceContext *>(hw_ctx->hwctx);
 
+	UtilityFunctions::print("Setup Vulkan Device Ctx");
 	av_vk_ctx_setup(vk, rd);
 	// TODO free the hwdevice and general cleanup
 	if (av_hwdevice_ctx_init(hw_dev) >= 0) {
