@@ -28,14 +28,21 @@ class GAVTexture {
 
 	bool setup_pipeline(AVPixelFormat pixel_format, AVColorSpace color_space = AVCOL_SPC_UNSPECIFIED);
 	void run_conversion_shader() const;
+	void update_from_sw(const AvVideoFrame &frame);
+	void update_from_vk(const AvVideoFrame &frame);
 
 public:
 	GAVLog log = GAVLog("GAVTexture");
+	AVCodecContext *codec_ctx = nullptr;
 
 	explicit GAVTexture(godot::RenderingDevice *rd);
 	~GAVTexture();
 	bool setup(const AvVideoInfo &info);
 	godot::Ref<godot::Texture2D> get_texture();
+
+	godot::RenderingDevice *get_conversion_rd() {
+		return conversion_rd;
+	}
 
 	void set_transparent() const;
 

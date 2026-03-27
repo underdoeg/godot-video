@@ -95,6 +95,8 @@ struct AvAudioFrame : AvBaseFrame {
 struct AvWrapperOutputSettings {
 	bool video_hw_enabled = true;
 	AVHWDeviceType video_hw_type = AV_HWDEVICE_TYPE_NONE;
+	AVBufferRef *video_hw_device = nullptr;
+
 	int frame_buffer_size = 10;
 	AVSampleFormat audio_sample_fmt = AV_SAMPLE_FMT_FLT;
 	int audio_sample_rate = 0;
@@ -218,6 +220,10 @@ public:
 
 	AvFileInfo get_file_info() {
 		return file_info;
+	}
+
+	AVCodecContext *get_video_codec_context() const {
+		return video_codec.get();
 	}
 
 	void stop();

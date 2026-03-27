@@ -350,18 +350,28 @@ AvCodecContextPtr AvPlayer::create_video_codec_context() {
 		log.verbose("found hw config: '{}'", av_hwdevice_get_type_name(hw_config->device_type));
 	}
 
+	// sort and clean up hw config depending on settings
+
 	if (hw_configs.empty()) {
 		log.warn("no supported hw acceleration found, will use software decoding");
 	} else {
 		// init HW decoding
-		AVBufferRef *hw_device = nullptr;
+		AVBufferRef *hw_device = output_settings.video_hw_device;
 		auto create_hw_device = [&](const AVCodecHWConfig *conf) {
 			log.verbose("attempting to create hw device '{}'", av_hwdevice_get_type_name(conf->device_type));
 
-			if (!ff_ok(av_hwdevice_ctx_create(&hw_device, conf->device_type, nullptr, nullptr, 0))) {
-				if (hw_device) {
-					av_buffer_unref(&hw_device);
-					hw_device = nullptr;
+			// if (conf->device_type == AV_HWDEVICE_TYPE_VULKAN) {
+			// 	AVBufferRef *hw_dev = av_hwdevice_ctx_alloc(conf->device_type);
+			// 	auto *hwctx = reinterpret_cast<AVHWDeviceContext *>(hw_dev->data);
+			// 	auto *vk = static_cast<AVVulkanDeviceContext *>(hwctx->hwctx);
+			// }
+
+			if (!hw_device) {
+				if (!ff_ok(av_hwdevice_ctx_create(&hw_device, conf->device_type, nullptr, nullptr, 0))) {
+					if (hw_device) {
+						av_buffer_unref(&hw_device);
+						hw_device = nullptr;
+					}
 				}
 			}
 
@@ -515,9 +525,17 @@ AvCodecs::ResultType AvPlayer::init_video() {
 
 bool AvPlayer::video_frame_received(const AvFramePtr &frame) {
 	const auto millis = av_get_frame_millis_ptr(frame, video_codec);
+	auto frame_type = SW_BUFFER;
+	if (frame->hw_frames_ctx) {
+		if (output_settings.video_hw_type == AV_HWDEVICE_TYPE_VULKAN && output_settings.video_hw_device) {
+			frame_type = VK_BUFFER;
+		} else {
+			frame_type = HW_BUFFER;
+		}
+	}
 	video_frames.push_back({ frame,
 			millis,
-			frame->hw_frames_ctx ? HW_BUFFER : SW_BUFFER,
+			frame_type,
 			video_codec->colorspace });
 	return frame_needs_emit(video_frames.back());
 }

@@ -1,6 +1,7 @@
 #include "gav_playback.h"
 #include "gav_settings.h"
 #include "gav_singleton.h"
+#include "vk_ctx.h"
 
 #include <condition_variable>
 #include <filesystem>
@@ -65,6 +66,11 @@ bool GAVPlayback::load(const String &p_path) {
 	AvPlayerLoadSettings settings;
 	settings.file_path = path_global.ascii().ptr();
 	settings.output.frame_buffer_size = gav_settings::frame_buffer_size();
+	if (gav_settings::use_vk_decoders()) {
+		settings.output.video_hw_type = AV_HWDEVICE_TYPE_VULKAN;
+		// attempt to create a hw device that uses the same as the godot rendering
+		settings.output.video_hw_device = av_vk_create_device(texture ? texture->get_conversion_rd() : nullptr);
+	}
 	// settings.output.audio_sample_rate = 48000;
 
 	settings.events.end = [&]() {
@@ -176,6 +182,7 @@ void GAVPlayback::set_file_info(const AvFileInfo &info) {
 	texture->log.set_level(log.get_level());
 	texture->log.set_name(log.get_name() + String(" - texture"));
 	texture->setup(info.video);
+	texture->codec_ctx = av->get_video_codec_context();
 }
 
 void GAVPlayback::on_video_frame(const AvVideoFrame &frame) const {
