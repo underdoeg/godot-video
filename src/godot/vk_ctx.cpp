@@ -271,7 +271,10 @@ bool av_vk_ctx_setup(AVVulkanDeviceContext *ctx, godot::RenderingDevice *rd) {
 #endif
 }
 
-AVBufferRef *av_vk_create_device(godot::RenderingDevice *rd) {
+AVBufferRef *av_vk_create_device(RenderingDevice *rd) {
+	if (!rd) {
+		rd = RenderingServer::get_singleton()->get_rendering_device();
+	}
 	static AVBufferRef *hw_dev = nullptr;
 	if (hw_dev) {
 		UtilityFunctions::print("Return already created vk device");

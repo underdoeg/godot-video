@@ -27,10 +27,12 @@ settings/stdout/print_fps=true
 
 window/size/viewport_width=1080
 window/size/viewport_height=1920
+window/vsync/vsync_mode=0
 
 [gav_player]
 
 verbose_logging=true
+use_vk_decoders=true
 
 [rendering]
 

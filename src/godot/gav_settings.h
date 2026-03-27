@@ -7,4 +7,6 @@ bool use_threads();
 bool verbose_logging();
 int frame_buffer_size();
 bool reuse_decoders();
+bool use_vk_decoders();
+
 } //namespace gav_settings

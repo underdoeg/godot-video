@@ -5,10 +5,13 @@
 #include "gav_texture.h"
 
 #include "shaders.h"
+#include "vk_ctx.h"
 
 #include "godot_cpp/classes/rd_shader_file.hpp"
 #include "godot_cpp/classes/rd_uniform.hpp"
 #include "godot_cpp/classes/rendering_server.hpp"
+
+#include <vulkan/vulkan_core.h>
 
 #include <godot_cpp/classes/rd_texture_format.hpp>
 #include <godot_cpp/classes/rd_texture_view.hpp>
@@ -16,6 +19,18 @@
 extern "C" {
 #include <libavutil/pixdesc.h>
 }
+
+struct VkFunctions {
+	PFN_vkBeginCommandBuffer begin_command_buffer;
+	PFN_vkEndCommandBuffer end_command_buffer;
+	PFN_vkCmdCopyImage cmd_copy_image;
+	PFN_vkCreateCommandPool create_command_pool;
+	PFN_vkAllocateCommandBuffers allocate_command_buffers;
+	PFN_vkQueueSubmit queue_submit;
+	PFN_vkCmdCopyImageToBuffer copy_image_to_buffer;
+};
+
+static VkFunctions *vkf = nullptr;
 
 using namespace godot;
 
@@ -110,25 +125,8 @@ Ref<Texture2D> GAVTexture::get_texture() {
 }
 void GAVTexture::set_transparent() const {
 	PackedByteArray pixels;
-	// for (int i = 0; i < num_planes; i++) {
-	// 	auto plane = plane_infos[i];
-	// 	pixels.resize(plane.byte_size);
-	// 	rd->texture_update(planes[i], 0, pixels);
-	// }
 	pixels.resize(info.width * info.height * 4);
-
-	// auto ptr = pixels.ptrw();
-	// for (int i = 0; i < info.width * info.height * 4; i+=4) {
-	// 	// pixels.ptrw()[i] = rand() % 256;
-	// 	ptr[i] = 0;
-	// 	ptr[i + 1] = 0;
-	// 	ptr[i + 2] = 0;
-	// 	ptr[i + 3] = 127;
-	// }
 	conversion_rd->texture_update(texture_rid, 0, pixels);
-
-	// conversion_rd->texture_get_native_handle()
-
 }
 
 bool GAVTexture::setup_pipeline(AVPixelFormat pixel_format, AVColorSpace color_space) {
@@ -180,7 +178,7 @@ bool GAVTexture::setup_pipeline(AVPixelFormat pixel_format, AVColorSpace color_s
 				pixel_format == AV_PIX_FMT_P010LE) {
 			tex_format = RenderingDevice::DATA_FORMAT_R16_UNORM;
 			log.info("Using 16bit float textures");
-		}else if (pixel_format == AV_PIX_FMT_YUV420P10LE) {
+		} else if (pixel_format == AV_PIX_FMT_YUV420P10LE) {
 			log.info("Using 8bit int textures");
 			tex_format = RenderingDevice::DATA_FORMAT_R8_UINT;
 		} else {
@@ -291,16 +289,224 @@ void GAVTexture::run_conversion_shader() const {
 	}
 }
 
+void GAVTexture::update_from_vk(const AvVideoFrame &frame) {
+	auto rd = conversion_rd;
+	if (!vkf) {
+		auto v = reinterpret_cast<VkInstance>(rd->get_driver_resource(RenderingDevice::DRIVER_RESOURCE_TOPMOST_OBJECT, {}, 0));
+		vkf = new VkFunctions{
+			reinterpret_cast<PFN_vkBeginCommandBuffer>(vk_proc_addr(v, "vkBeginCommandBuffer")),
+			reinterpret_cast<PFN_vkEndCommandBuffer>(vk_proc_addr(v, "vkEndCommandBuffer")),
+			reinterpret_cast<PFN_vkCmdCopyImage>(vk_proc_addr(v, "vkCmdCopyImage")),
+			reinterpret_cast<PFN_vkCreateCommandPool>(vk_proc_addr(v, "vkCreateCommandPool")),
+			reinterpret_cast<PFN_vkAllocateCommandBuffers>(vk_proc_addr(v, "vkAllocateCommandBuffers")),
+			reinterpret_cast<PFN_vkQueueSubmit>(vk_proc_addr(v, "vkQueueSubmit")),
+			reinterpret_cast<PFN_vkCmdCopyImageToBuffer>(vk_proc_addr(v, "vkCmdCopyImageToBuffer")),
+		};
+	}
+	//
+	// if (!codec_ctx || !codec_ctx->hw_device_ctx) {
+	// 	UtilityFunctions::printerr("Could not retrieve vk codec ctx");
+	// 	return;
+	// }
+
+	auto *hw_dev = reinterpret_cast<AVHWDeviceContext *>(codec_ctx->hw_device_ctx->data);
+	// auto pixel_format = static_cast<AVPixelFormat>(frame.frame->format);
+	// return;
+
+	// const VkFormat *fmts = nullptr;
+	// VkImageAspectFlags aspects;
+	// VkImageUsageFlags usage;
+	// int nb_images;
+	//
+	// int ret = av_vkfmt_from_pixfmt2(hwdev, active_upload_pix_fmt,
+	// 		VK_IMAGE_USAGE_SAMPLED_BIT, &fmts,
+	// 		&nb_images, &aspects, &usage);
+
+	auto *vk = static_cast<AVVulkanDeviceContext *>(hw_dev->hwctx);
+
+	auto *frames = reinterpret_cast<AVHWFramesContext *>(codec_ctx->hw_frames_ctx->data);
+
+	if (!setup_pipeline(frames->sw_format)) {
+		UtilityFunctions::printerr("failed to setup render pipeline");
+		return;
+	}
+	auto *vk_frames_ctx = static_cast<AVVulkanFramesContext *>(frames->hwctx);
+
+	auto vk_queue = reinterpret_cast<VkQueue>(rd->get_driver_resource(RenderingDevice::DRIVER_RESOURCE_COMMAND_QUEUE, {}, 0));
+
+	// that can be allocated out of it.
+
+	VkCommandPoolCreateInfo cmd_pool_info = {};
+	cmd_pool_info.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
+	cmd_pool_info.pNext = nullptr;
+	cmd_pool_info.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
+	cmd_pool_info.queueFamilyIndex = rd->get_driver_resource(RenderingDevice::DRIVER_RESOURCE_QUEUE_FAMILY, {}, 0);
+
+	VkCommandPool cmd_copy_frames;
+	if (vkf->create_command_pool(vk->act_dev, &cmd_pool_info, nullptr, &cmd_copy_frames) != VK_SUCCESS) {
+		UtilityFunctions::printerr("Couldn't create command pool");
+		return;
+	}
+
+	// Populate a command buffer info struct with a reference to the command pool from which the memory for the command buffer is taken.
+	// Notice the "level" parameter which ensures these will be primary command planes.
+	VkCommandBufferAllocateInfo cmd_buf_info = {};
+	cmd_buf_info.pNext = nullptr;
+	cmd_buf_info.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	cmd_buf_info.commandPool = cmd_copy_frames;
+	cmd_buf_info.commandBufferCount = 1;
+	cmd_buf_info.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+
+	VkCommandBuffer cmd_buf;
+
+	if (vkf->allocate_command_buffers(vk->act_dev, &cmd_buf_info, &cmd_buf) != VK_SUCCESS) {
+		UtilityFunctions::printerr("Could not allocate command planes!");
+		return;
+	}
+
+	auto *vk_frame = reinterpret_cast<AVVkFrame *>(frame.frame->data[0]);
+
+	vk_frames_ctx->lock_frame(frames, vk_frame);
+
+	auto release_frames = [&] {
+		vk_frames_ctx->unlock_frame(frames, vk_frame);
+	};
+
+	// copy all image planes
+	VkCommandBufferBeginInfo cmd_buf_begin;
+	cmd_buf_begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	cmd_buf_begin.pNext = nullptr;
+	cmd_buf_begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+	cmd_buf_begin.pInheritanceInfo = nullptr;
+
+	if (vkf->begin_command_buffer(cmd_buf, &cmd_buf_begin) != VK_SUCCESS) {
+		UtilityFunctions::printerr("Could not begin command buffer");
+		release_frames();
+		return;
+	}
+
+	constexpr bool test_copy = false;
+	if (test_copy) {
+		const auto ffmpeg_img = vk_frame->img[0];
+		const auto info = plane_infos[0];
+		// use image
+		const auto godot_img = reinterpret_cast<VkImage>(rd->get_driver_resource(RenderingDevice::DRIVER_RESOURCE_TEXTURE, texture_rid, 0));
+		VkImageCopy region;
+
+		region.srcSubresource.aspectMask = VK_IMAGE_ASPECT_PLANE_0_BIT;
+		region.srcSubresource.mipLevel = 0;
+		region.srcSubresource.baseArrayLayer = 0;
+		region.srcSubresource.layerCount = 1;
+		region.srcOffset.x = region.srcOffset.y = region.srcOffset.z = 0;
+		region.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		region.dstSubresource.mipLevel = 0;
+		region.dstSubresource.baseArrayLayer = 0;
+		region.dstSubresource.layerCount = 1;
+		region.dstOffset.x = region.dstOffset.y = region.dstOffset.z = 0;
+		region.extent.width = info.width;
+		region.extent.height = info.height;
+		region.extent.depth = 1;
+		vkf->cmd_copy_image(cmd_buf, ffmpeg_img, vk_frame->layout[0], godot_img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+		// UtilityFunctions::print("TEST COPY");
+	} else {
+		for (int i = 0; i < plane_infos.size(); i++) {
+			// planes are always in the same image? as layers?
+			const auto ffmpeg_img = vk_frame->img[0];
+			const auto planer_info = plane_infos[i];
+			const auto plane = plane_textures[i];
+			// UtilityFunctions::print("Copy plane ", i, " - ", info.width, "x", info.height);
+
+			if (!plane.is_valid()) {
+				UtilityFunctions::printerr("godot image ", i, " is not valid");
+				release_frames();
+				return;
+			}
+
+			if (!ffmpeg_img) {
+				UtilityFunctions::printerr("ffmpeg image ", i, " is not valid");
+				release_frames();
+				return;
+			}
+
+			auto layer_flag = VK_IMAGE_ASPECT_PLANE_0_BIT;
+			if (i == 1) {
+				layer_flag = VK_IMAGE_ASPECT_PLANE_1_BIT;
+			} else if (i == 2) {
+				layer_flag = VK_IMAGE_ASPECT_PLANE_2_BIT;
+			}
+
+			// use image
+			const auto godot_img = reinterpret_cast<VkImage>(rd->get_driver_resource(RenderingDevice::DRIVER_RESOURCE_TEXTURE, plane, 0));
+			VkImageCopy region;
+			region.srcSubresource.aspectMask = layer_flag;
+			region.srcSubresource.mipLevel = 0;
+			region.srcSubresource.baseArrayLayer = 0;
+			region.srcSubresource.layerCount = 1;
+			region.srcOffset.x = region.srcOffset.y = region.srcOffset.z = 0;
+			region.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+			region.dstSubresource.mipLevel = 0;
+			region.dstSubresource.baseArrayLayer = 0;
+			region.dstSubresource.layerCount = 1;
+			region.dstOffset.x = region.dstOffset.y = region.dstOffset.z = 0;
+			region.extent.width = planer_info.width;
+			region.extent.height = planer_info.height;
+			region.extent.depth = 1;
+			vkf->cmd_copy_image(cmd_buf, ffmpeg_img, vk_frame->layout[0], godot_img, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region);
+		}
+	}
+
+	if (vkf->end_command_buffer(cmd_buf) != VK_SUCCESS) {
+		UtilityFunctions::printerr("Could not end command buffer");
+		release_frames();
+		return;
+	}
+
+	VkTimelineSemaphoreSubmitInfo timeline_info;
+	timeline_info.sType = VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO;
+	timeline_info.pNext = nullptr;
+	timeline_info.waitSemaphoreValueCount = 1;
+	timeline_info.pWaitSemaphoreValues = vk_frame->sem_value;
+
+	std::array<VkPipelineStageFlags, 4> stageFlags = { VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT, VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT };
+
+	// execute the copy commands
+	VkSubmitInfo vsi;
+	vsi.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	vsi.waitSemaphoreCount = 1;
+	vsi.pWaitSemaphores = vk_frame->sem;
+	vsi.signalSemaphoreCount = 1;
+	vsi.signalSemaphoreCount = 0;
+	vsi.pWaitDstStageMask = stageFlags.data();
+	vsi.pNext = &timeline_info;
+	vsi.commandBufferCount = 1;
+	vsi.pCommandBuffers = &cmd_buf;
+	if (vkf->queue_submit(vk_queue, 1, &vsi, VK_NULL_HANDLE) != VK_SUCCESS) {
+		UtilityFunctions::printerr("Could not queue command buffer");
+		release_frames();
+		return;
+	}
+
+	release_frames();
+}
+
 void GAVTexture::update(const AvVideoFrame &frame) {
 	MEASURE_N("Texture");
-	if (frame.type == VK_BUFFER) {
-		log.warn("VK_BUFFER frame types are not yet implemented.");
-		return;
+	switch (frame.type) {
+		case VK_BUFFER:
+			update_from_vk(frame);
+			break;
+		case SW_BUFFER:
+			update_from_sw(frame);
+			break;
+		default:
+			log.warn("HW_BUFFER frame types should get converted by the av_player.");
+			return;
 	}
-	if (frame.type == HW_BUFFER) {
-		log.warn("HW_BUFFER frame types should get converted by the av_player.");
-		return;
-	}
+
+	run_conversion_shader();
+}
+
+void GAVTexture::update_from_sw(const AvVideoFrame &frame) {
 	auto pixel_format = static_cast<AVPixelFormat>(frame.frame->format);
 	if (!setup_pipeline(pixel_format, frame.color_space)) {
 		log.error("failed to setup conversion pipeline");
@@ -337,6 +543,4 @@ void GAVTexture::update(const AvVideoFrame &frame) {
 			conversion_rd->texture_update(plane_textures.at(i), 0, buffers[i]);
 		}
 	}
-
-	run_conversion_shader();
 }

@@ -1,7 +1,7 @@
 #include "gav_playback.h"
 #include "gav_settings.h"
 #include "gav_singleton.h"
-
+#include "vk_ctx.h"
 #include <chrono>
 #include <condition_variable>
 #include <filesystem>
@@ -45,11 +45,6 @@ bool GAVPlayback::load(const String &p_path) {
 		thread.join();
 	}
 
-	// if (ltc_thread.joinable()) {
-	// 	ltc_thread_request_stop = true;
-	// 	ltc_thread.join();
-	// }
-
 	keep_processing = true;
 
 	auto path_global = ProjectSettings::get_singleton()->globalize_path(p_path);
@@ -75,6 +70,11 @@ bool GAVPlayback::load(const String &p_path) {
 	AvPlayerLoadSettings settings;
 	settings.file_path = path_global.ascii().ptr();
 	settings.output.frame_buffer_size = gav_settings::frame_buffer_size();
+	if (gav_settings::use_vk_decoders()) {
+		settings.output.video_hw_type = AV_HWDEVICE_TYPE_VULKAN;
+		// attempt to create a hw device that uses the same as the godot rendering
+		settings.output.video_hw_device = av_vk_create_device(texture ? texture->get_conversion_rd() : nullptr);
+	}
 	// settings.output.audio_sample_rate = 48000;
 
 	settings.events.end = [&]() {
@@ -186,6 +186,7 @@ void GAVPlayback::set_file_info(const AvFileInfo &info) {
 	texture->log.set_level(log.get_level());
 	texture->log.set_name(log.get_name() + String(" - texture"));
 	texture->setup(info.video);
+	texture->codec_ctx = av->get_video_codec_context();
 }
 
 void GAVPlayback::on_video_frame(const AvVideoFrame &frame) const {
@@ -250,7 +251,10 @@ void GAVPlayback::on_audio_frame(const AvAudioFrame &frame) {
 		return;
 	audio_buffer.resize(frame.byte_size / sizeof(float));
 	memcpy(audio_buffer.ptrw(), frame.frame->data[0], frame.byte_size);
-	mix_audio(frame.frame->nb_samples, audio_buffer, 0);
+	int samples_sent = 0;
+	while (samples_sent < frame.frame->nb_samples) {
+		samples_sent += mix_audio(frame.frame->nb_samples, audio_buffer, samples_sent);
+	}
 }
 
 void GAVPlayback::_stop() {
@@ -361,6 +365,8 @@ int32_t GAVPlayback::_get_mix_rate() const {
 	log.info("_get_mix_rate ", av->sample_rate());
 	return av->sample_rate();
 }
+
+
 void GAVPlayback::_update(double p_delta) {
 	MEASURE_N("MAIN");
 	if (video_finished) {
@@ -386,6 +392,7 @@ void GAVPlayback::_update(double p_delta) {
 			}
 		}
 		{
+			// TODO: audio
 			std::deque<AvAudioFrame> audio_frames;
 			{
 				std::scoped_lock lock(audio_mutex);
