@@ -190,7 +190,10 @@ void GAVPlayback::on_video_frame(const AvVideoFrame &frame) const {
 void GAVPlayback::on_audio_frame(const AvAudioFrame &frame) {
 	audio_buffer.resize(frame.byte_size / sizeof(float));
 	memcpy(audio_buffer.ptrw(), frame.frame->data[0], frame.byte_size);
-	mix_audio(frame.frame->nb_samples, audio_buffer, 0);
+	int samples_sent = 0;
+	while (samples_sent < frame.frame->nb_samples) {
+		samples_sent += mix_audio(frame.frame->nb_samples, audio_buffer, samples_sent);
+	}
 }
 
 void GAVPlayback::_stop() {
@@ -275,7 +278,6 @@ int32_t GAVPlayback::_get_mix_rate() const {
 	log.info("_get_mix_rate ", av->sample_rate());
 	return av->sample_rate();
 }
-
 
 void GAVPlayback::_update(double p_delta) {
 	MEASURE_N("MAIN");
