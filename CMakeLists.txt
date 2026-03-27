@@ -272,7 +272,7 @@ if (NOT BUILD_ANDROID)
     # potentially enable  --enable-libass  --enable-libfreetype => subtitles |  --enable-libdav1d av1 decode | --enable-libopus opus audio | --enable-libvpx VP8/VP9 |  --enable-libfdk-aac AAC Audio |  --enable-libvorbis  vorbis audio |  --enable-libmp3lame mp3 audio
     # --enable-cuda-sdk  --enable-nvenc --enable-ffnvcodec
     set(FFMPEG_CONFIG --enable-gpl --enable-libx264 --enable-libx265 --enable-nonfree --enable-vaapi
-            --enable-rpath --enable-ffplay --disable-cuda-sdk --disable-cuda-nvcc)
+            --enable-rpath --enable-ffplay --disable-cuda-sdk --disable-cuda-nvcc --enable-vulkan)
     if (CMAKE_BUILD_TYPE STREQUAL "Debug")
         message("Enable ffmpeg debug build")
         set(FFMPEG_CONFIG ${FFMPEG_CONFIG} --enable-debug=3 --disable-optimizations --disable-stripping)
