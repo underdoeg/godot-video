@@ -284,8 +284,7 @@ AVBufferRef *av_vk_create_device(RenderingDevice *rd) {
 
 	UtilityFunctions::print("Creating AV Vulkan device");
 
-	auto device_type = AV_HWDEVICE_TYPE_VULKAN;
-	hw_dev = av_hwdevice_ctx_alloc(device_type);
+	hw_dev = av_hwdevice_ctx_alloc(AV_HWDEVICE_TYPE_VULKAN);
 	if (!hw_dev) {
 		UtilityFunctions::print("Failed to create Vulkan device.");
 		return nullptr;
