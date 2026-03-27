@@ -27,8 +27,8 @@ class GAVPlayback : public godot::VideoStreamPlayback {
 	static void _bind_methods();
 
 	GAVLog log = GAVLog("GAVPlayback");
-	std::shared_ptr<AvPlayer> av;
-	std::shared_ptr<GAVTexture> texture;
+	std::shared_ptr<AvPlayer> av{};
+	std::shared_ptr<GAVTexture> texture{};
 
 	bool threaded = gav_settings::use_threads();
 	std::thread thread;

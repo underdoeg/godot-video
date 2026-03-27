@@ -7,8 +7,8 @@
 #include "godot_cpp/variant/rid.hpp"
 
 class GAVTexture {
-	godot::RenderingDevice *main_rd;
-	godot::RenderingDevice *conversion_rd;
+	godot::RenderingDevice *main_rd = nullptr;
+	godot::RenderingDevice *conversion_rd = nullptr;
 
 	godot::RID conversion_pipeline{};
 	godot::RID conversion_shader{};
