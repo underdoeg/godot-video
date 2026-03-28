@@ -452,7 +452,7 @@ elseif (USE_SYSTEM_FFMPEG)
     #    target_link_directories(${LIBNAME} PRIVATE ${LIBS_LINK})
     target_link_libraries(${LIBNAME} PRIVATE godot-cpp
             va va-drm va-x11 va-wayland xcb-dri3
-            drm Xext vdpau vulkan Xfixes X11-xcb
+            drm Xext vdpau vulkan X11-xcb
             avformat avcodec avdevice avutil avfilter swscale swresample
             vulkan aom va fdk-aac mp3lame dav1d opus va-drm va-x11 vdpau vorbis vorbisenc numa
             x264 x265 lzma bz2
@@ -471,7 +471,7 @@ else ()
             # xcb xcb-dri3
             va va-drm va-x11 va-wayland # OpenCL
             # link system libva, no idea how to use the static libs platform independent
-            X11 Xfixes
+            X11
             vulkan aom fdk-aac mp3lame dav1d opus vdpau vorbis vorbisenc numa
             libltc.a libsndfile.a
     )
