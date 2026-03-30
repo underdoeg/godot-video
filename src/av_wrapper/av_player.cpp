@@ -359,7 +359,6 @@ AvCodecContextPtr AvPlayer::create_video_codec_context() {
 	}
 
 	// sort and clean up hw config depending on settings
-
 	if (hw_configs.empty()) {
 		log.warn("no supported hw acceleration found, will use software decoding");
 	} else {
@@ -480,7 +479,7 @@ AvCodecContextPtr AvPlayer::create_video_codec_context() {
 				AVHWFramesConstraints *hw_frames_const = av_hwdevice_get_hwframe_constraints(hw_device, nullptr);
 				for (AVPixelFormat *p = hw_frames_const->valid_sw_formats;
 						*p != AV_PIX_FMT_NONE; p++) {
-					// log.verbose("HW decoder pixel supported pixel format: {}", av_get_pix_fmt_name(*p));
+					log.verbose("HW decoder pixel supported pixel format: {}", av_get_pix_fmt_name(*p));
 					if (ctx->sw_format == AV_PIX_FMT_NONE || *p == AV_PIX_FMT_RGBA || *p == AV_PIX_FMT_YUV420P) {
 						ctx->sw_format = *p;
 					}
@@ -521,21 +520,21 @@ AvCodecContextPtr AvPlayer::create_video_codec_context() {
 	// };
 	// }
 
-	codec->opaque = this;
-	codec->get_format = [](
-								AVCodecContext *ctx,
-								const enum AVPixelFormat *pix_fmts) -> AVPixelFormat {
-		auto *self = static_cast<AvPlayer *>(ctx->opaque);
-		while (*pix_fmts != AV_PIX_FMT_NONE) {
-			if (*pix_fmts == self->hw_config->pix_fmt) {
-				printf("possible format: %s\n", av_get_pix_fmt_name(self->hw_config->pix_fmt));
-				return *pix_fmts;
-			}
-			pix_fmts++;
-		}
-
-		return AV_PIX_FMT_NONE;
-	};
+	// codec->opaque = this;
+	// codec->get_format = [](
+	// 							AVCodecContext *ctx,
+	// 							const enum AVPixelFormat *pix_fmts) -> AVPixelFormat {
+	// 	auto *self = static_cast<AvPlayer *>(ctx->opaque);
+	// 	while (*pix_fmts != AV_PIX_FMT_NONE) {
+	// 		if (*pix_fmts == self->hw_config->pix_fmt) {
+	// 			printf("possible format: %s\n", av_get_pix_fmt_name(self->hw_config->pix_fmt));
+	// 			return *pix_fmts;
+	// 		}
+	// 		pix_fmts++;
+	// 	}
+	//
+	// 	return AV_PIX_FMT_NONE;
+	// };
 
 	log.verbose("finally open the decoder");
 	if (!ff_ok(avcodec_open2(codec.get(), decoder, nullptr))) {
