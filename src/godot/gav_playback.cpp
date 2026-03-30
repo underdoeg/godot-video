@@ -4,7 +4,6 @@
 #include "vk_ctx.h"
 #include <chrono>
 #include <condition_variable>
-#include <filesystem>
 
 #include <godot_cpp/classes/engine.hpp>
 #include <godot_cpp/classes/image.hpp>
@@ -13,6 +12,8 @@
 #include <godot_cpp/classes/rendering_server.hpp>
 
 using namespace godot;
+
+constexpr int LTC_SAMPLE_RATE = 48000;
 
 void GAVPlayback::_bind_methods() {
 }
@@ -363,10 +364,12 @@ int32_t GAVPlayback::_get_channels() const {
 int32_t GAVPlayback::_get_mix_rate() const {
 	if (!av)
 		return 0;
+	if (timecode_enabled) {
+		return LTC_SAMPLE_RATE;
+	}
 	log.info("_get_mix_rate ", av->sample_rate());
 	return av->sample_rate();
 }
-
 
 void GAVPlayback::_update(double p_delta) {
 	MEASURE_N("MAIN");
@@ -440,7 +443,7 @@ void GAVPlayback::update_timecode() {
 
 	if (!ltc_encoder) {
 		log.info("create ltc encoder");
-		ltc_encoder = ltc_encoder_create(av->sample_rate(), file_info.video.frame_rate, LTC_TV_625_50, LTC_BGF_DONT_TOUCH);
+		ltc_encoder = ltc_encoder_create(LTC_SAMPLE_RATE, file_info.video.frame_rate, LTC_TV_625_50, LTC_BGF_DONT_TOUCH);
 		ltc_encoder_set_volume(ltc_encoder, -3.0);
 		// log.info("set user bit to 450");
 

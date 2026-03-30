@@ -1,7 +1,6 @@
 [gd_scene format=3 uid="uid://b568gxnsliogt"]
 
 [ext_resource type="Script" uid="uid://dcj2ph8clyi0n" path="res://single_video.gd" id="1_phvak"]
-[ext_resource type="VideoStream" uid="uid://d323ogpx3t0pp" path="res://ltc.mp4" id="2_phvak"]
 
 [node name="SingleVideo" type="ColorRect" unique_id=916363875]
 anchors_preset = 15

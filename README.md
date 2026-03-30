@@ -60,9 +60,13 @@ gradle assemble
 
 ## Notes
 
+vulkan-sdk is required
+
 library is linked against vaapi 2.2, older ubuntu version need the intel ppa
 ```sudo add-apt-repository -y ppa:kobuk-team/intel-graphics```
 
+older ubuntu also have outdated vulkan libs
+```sudo add-apt-repository ppa:kisak/kisak-mesa```
 
 ## SDL TODO
 
