@@ -65,6 +65,8 @@ bool GAVTexture::setup(const AvVideoInfo &_info) {
 		log.warn("video width and height should be divisible by 4. it might still work, but miss a few pixels");
 	}
 
+
+
 	// the output texture
 	Ref<RDTextureFormat> format;
 	format.instantiate();

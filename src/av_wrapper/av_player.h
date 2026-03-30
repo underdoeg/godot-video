@@ -172,6 +172,7 @@ private:
 	AvCodecContextPtr create_video_codec_context();
 	AvCodecContextPtr create_audio_codec_context();
 
+
 	// these methods return true if the new frames should be displayed immediately
 	bool read_next_frames();
 	bool frame_received(const AvFramePtr &frame, int stream_index);
@@ -213,6 +214,7 @@ private:
 public:
 	static AvCodecs codecs;
 	AvWrapperLog log;
+	const AVCodecHWConfig *hw_config = nullptr;
 
 	explicit AvPlayer(AvWrapperLog log = AvWrapperLog()) :
 			log(std::move(log)) {};

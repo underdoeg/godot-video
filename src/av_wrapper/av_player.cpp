@@ -262,6 +262,11 @@ AvCodecs::ResultType AvPlayer::init() {
 	log.verbose("init complete");
 	return res;
 }
+//
+// AVPixelFormat get_format(struct AVCodecContext *s, const enum AVPixelFormat * fmt) {
+// 	return AVPixelFormat::AV_PIX_FMT_RGBA;
+// }
+
 AvCodecContextPtr AvPlayer::create_video_codec_context() {
 	// setup the decoder
 	const AVCodec *decoder = avcodec_find_decoder(video_stream->codecpar->codec_id);
@@ -344,7 +349,6 @@ AvCodecContextPtr AvPlayer::create_video_codec_context() {
 #endif
 
 	int i = 0;
-	const AVCodecHWConfig *hw_config = nullptr;
 	while ((hw_config = avcodec_get_hw_config(decoder, i++)) != nullptr) {
 		if (hw_config->device_type == AV_HWDEVICE_TYPE_CUDA) {
 			// cuda is slow, TODO: try to not even compile it into ffmpeg?
@@ -476,8 +480,8 @@ AvCodecContextPtr AvPlayer::create_video_codec_context() {
 				AVHWFramesConstraints *hw_frames_const = av_hwdevice_get_hwframe_constraints(hw_device, nullptr);
 				for (AVPixelFormat *p = hw_frames_const->valid_sw_formats;
 						*p != AV_PIX_FMT_NONE; p++) {
-					log.verbose("HW decoder pixel supported pixel format: {}", av_get_pix_fmt_name(*p));
-					if (ctx->sw_format == AV_PIX_FMT_NONE || *p == AV_PIX_FMT_YUV420P) {
+					// log.verbose("HW decoder pixel supported pixel format: {}", av_get_pix_fmt_name(*p));
+					if (ctx->sw_format == AV_PIX_FMT_NONE || *p == AV_PIX_FMT_RGBA || *p == AV_PIX_FMT_YUV420P) {
 						ctx->sw_format = *p;
 					}
 				}
@@ -489,6 +493,7 @@ AvCodecContextPtr AvPlayer::create_video_codec_context() {
 				} else {
 					codec->hw_device_ctx = hw_device;
 					codec->hw_frames_ctx = video_hw_frames_ref;
+					codec->pix_fmt = ctx->sw_format;
 					// video_codec->pix_fmt = ctx;
 				}
 
@@ -501,7 +506,36 @@ AvCodecContextPtr AvPlayer::create_video_codec_context() {
 			}
 		}
 	}
+
+	// codec->get_format = get_format;
+	// codec->get_format = [](struct AVCodecContext *s, const enum AVPixelFormat * fmt) {
+	// 	size_t index = 0;
+	// 	auto f = fmt[index];
+	// 	while (f != AV_PIX_FMT_NONE) {
+	// 		printf("possible format: %s\n", av_get_pix_fmt_name(f));
+	//
+	// 		index ++;
+	// 		f = fmt[index];
+	// 	}
+	// 	return AV_PIX_FMT_VULKAN;
+	// };
 	// }
+
+	codec->opaque = this;
+	codec->get_format = [](
+								AVCodecContext *ctx,
+								const enum AVPixelFormat *pix_fmts) -> AVPixelFormat {
+		auto *self = static_cast<AvPlayer *>(ctx->opaque);
+		while (*pix_fmts != AV_PIX_FMT_NONE) {
+			if (*pix_fmts == self->hw_config->pix_fmt) {
+				printf("possible format: %s\n", av_get_pix_fmt_name(self->hw_config->pix_fmt));
+				return *pix_fmts;
+			}
+			pix_fmts++;
+		}
+
+		return AV_PIX_FMT_NONE;
+	};
 
 	log.verbose("finally open the decoder");
 	if (!ff_ok(avcodec_open2(codec.get(), decoder, nullptr))) {

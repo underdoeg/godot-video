@@ -2,7 +2,7 @@ extends Control
 @onready var player = $player
 
 func _ready():
-	var stream:GAVStream = load("res://ltc.mp4")
+	var stream:GAVStream = load("res://Andrea_MASTER.mp4")
 	stream.finished.connect(func():print("done"))
 	stream.timecode_enabled = true
 	stream.timecode_user_data = 550;

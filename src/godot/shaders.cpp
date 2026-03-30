@@ -266,45 +266,75 @@ godot::RID p010le(godot::RenderingDevice *rd, godot::Vector2i size) {
 	// 	UtilityFunctions::print("returning cached p010le shader");
 	// 	return cache;
 	// }
+	//
+		String s = R"(
+			#version 450
 
-	String s = R"(
-		#version 450
+			// Invocations in the (x, y, z) dimension
+			layout(local_size_x = 4, local_size_y = 4, local_size_z = 1) in;
 
-		// Invocations in the (x, y, z) dimension
-		layout(local_size_x = 4, local_size_y = 4, local_size_z = 1) in;
+			layout (set=0, binding=0, rgba8) uniform image2D result;
+			layout (set=0, binding=1, r16) readonly uniform image2D Y;
+			layout (set=0, binding=2, r16) readonly uniform image2D UV;
 
-		layout (set=0, binding=0, rgba8) uniform image2D result;
-		layout (set=0, binding=1, r16) readonly uniform image2D Y;
-		layout (set=0, binding=2, r16) readonly uniform image2D UV;
+			// The code we want to execute in each invocation
+			void main() {
+				// gl_LocalInvocationID.xy
+				ivec2 texel = ivec2(gl_GlobalInvocationID.xy);
 
-		// The code we want to execute in each invocation
-		void main() {
-			// gl_LocalInvocationID.xy
-			ivec2 texel = ivec2(gl_GlobalInvocationID.xy);
+				ivec2 texel_half = texel / 2;
+				ivec2 texel_u = texel_half;
+				ivec2 texel_v = texel_half;
 
-			ivec2 texel_half = texel / 2;
-			ivec2 texel_u = texel_half;
-			ivec2 texel_v = texel_half;
+				// uvuvuvuvuv layout
+				texel_u.x = texel.x - texel.x % 2;
+				texel_v.x = texel.x - texel.x % 2 + 1;
 
-			// uvuvuvuvuv layout
-			texel_u.x = texel.x - texel.x % 2;
-			texel_v.x = texel.x - texel.x % 2 + 1;
-
-			float y = imageLoad(Y, texel).r;
-			float u = imageLoad(UV, texel_u).r;
-			float v = imageLoad(UV, texel_v).r;
+				float y = imageLoad(Y, texel).r;
+				float u = imageLoad(UV, texel_u).r;
+				float v = imageLoad(UV, texel_v).r;
 
 
-			mat3 color_matrix = mat3(
-				1,   0,       1.402,
-				1,  -0.344,  -0.714,
-				1,   1.772,   0
-			);
+				mat3 color_matrix = mat3(
+					1,   0,       1.402,
+					1,  -0.344,  -0.714,
+					1,   1.772,   0
+				);
 
-			vec3 rgb = vec3(y,u-.5,v-.5) * color_matrix;
-			imageStore(result, texel, vec4(rgb, 1));
-		}
-	)";
+				vec3 rgb = vec3(y,u-.5,v-.5) * color_matrix;
+				imageStore(result, texel, vec4(rgb, 1));
+			}
+		)";
+
+// 	const String s = R"(
+// 		#version 450
+//
+// 		// Invocations in the (x, y, z) dimension
+// 		layout(local_size_x = 4, local_size_y = 4, local_size_z = 1) in;
+//
+// 		layout (set=0, binding=0, rgba8) uniform image2D result;
+// 		layout (set=0, binding=1, r16) readonly uniform image2D Y;
+// 		layout (set=0, binding=2, r16) readonly uniform image2D UV;
+//
+// 		// The code we want to execute in each invocation
+// 		void main() {
+// 			ivec2 texel = ivec2(gl_GlobalInvocationID.xy);
+// 			//ivec2 imageSize = imageSize(Y);
+// 			//vec2 vTexCoord = (vec2(texel) + 0.5) / vec2(imageSize);
+//
+// 			float y = imageLoad(Y, texel).r * 65535.0 / 1023.0;
+// 			vec2 uv = imageLoad(UV, texel).rg * 65535.0 / 1023.0;
+// 			y = 1.164383 * (y - 0.0625);
+// 			float u = uv.r - 0.5;
+// 			float v = uv.g - 0.5;
+// 			vec3 rgb = vec3(
+// 			    y + 1.596027 * v,
+// 			    y - 0.391762 * u - 0.812968 * v,
+// 			    y + 2.017232 * u
+// 			);
+// 			imageStore(result, texel, vec4(rgb, 1));
+// 		}
+// 	)";
 
 	return compile_shader(rd, s, "p010le");
 	// return cache;
