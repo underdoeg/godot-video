@@ -41,9 +41,7 @@ find_program(GIT git REQUIRED)
 set(CMAKE_SHARED_LINKER_FLAGS "-Wl,-Bsymbolic")
 
 set(LIBS_INSTALL ${CMAKE_BINARY_DIR}/libs)
-set(LIBS_INCLUDE ${LIBS_INSTALL}/include)
-set(LIBS_LINK ${LIBS_INSTALL}/lib)
-set(LIBS_PKG ${LIBS_LINK}/pkgconfig)
+
 message("libraries will be installed into ${LIBS_INSTALL}")
 
 #set(MAKE_FLAGS "CC=${CMAKE_C_COMPILER} CXX=${CMAKE_CXX_COMPILER}")
@@ -53,7 +51,7 @@ message("libraries will be installed into ${LIBS_INSTALL}")
 if (NOT BUILD_ANDROID)
 
     set(ZLIB_DIR ${CMAKE_BINARY_DIR}/zlib)
-    ExternalProject_Add(
+    externalproject_add(
             zlib
             GIT_REPOSITORY https://github.com/madler/zlib.git
             GIT_TAG v1.3.1
@@ -69,7 +67,7 @@ if (NOT BUILD_ANDROID)
 
     # X264
     set(X264_DIR ${CMAKE_BINARY_DIR}/x264)
-    ExternalProject_Add(
+    externalproject_add(
             libx264
             GIT_REPOSITORY https://code.videolan.org/videolan/x264.git
             GIT_TAG stable
@@ -83,7 +81,7 @@ if (NOT BUILD_ANDROID)
     )
 
     set(X265_DIR ${CMAKE_BINARY_DIR}/x265)
-    ExternalProject_Add(
+    externalproject_add(
             libx265
             GIT_REPOSITORY https://phwhitfield@bitbucket.org/multicoreware/x265_git.git
             GIT_TAG master
@@ -104,7 +102,7 @@ if (NOT BUILD_ANDROID)
 
     # XZ
     set(XZ_DIR ${CMAKE_BINARY_DIR}/xz)
-    ExternalProject_Add(
+    externalproject_add(
             xz
             GIT_REPOSITORY https://github.com/tukaani-project/xz
             GIT_TAG v5.8
@@ -118,7 +116,7 @@ if (NOT BUILD_ANDROID)
 
     # bzip2
     set(BZIP2_DIR ${CMAKE_BINARY_DIR}/bzip2)
-    ExternalProject_Add(
+    externalproject_add(
             bzip2
             GIT_REPOSITORY https://gitlab.com/bzip2/bzip2.git
             GIT_TAG master
@@ -134,7 +132,7 @@ if (NOT BUILD_ANDROID)
     )
 
     set(LIBLTC_DIR ${CMAKE_BINARY_DIR}/libltc)
-    ExternalProject_Add(
+    externalproject_add(
             libltc_external
             GIT_REPOSITORY https://github.com/x42/libltc.git
             GIT_TAG master
@@ -148,13 +146,13 @@ if (NOT BUILD_ANDROID)
             LOG_BUILD 1
     )
 
-    ExternalProject_Get_Property(libltc_external INSTALL_DIR)
+    externalproject_get_property(libltc_external INSTALL_DIR)
     set(LIBLTC_INCLUDE_DIR ${INSTALL_DIR}/include)
     set(LIBLTC_LIBRARY_DIR ${INSTALL_DIR}/lib)
 
 
     set(LIBSNDFILE_DIR ${CMAKE_BINARY_DIR}/libsndfile)
-    ExternalProject_Add(
+    externalproject_add(
             libsndfile_external
             GIT_REPOSITORY https://github.com/libsndfile/libsndfile.git
             GIT_TAG master #1.2.2
@@ -166,7 +164,7 @@ if (NOT BUILD_ANDROID)
             LOG_BUILD 1
     )
 
-    ExternalProject_Get_Property(libsndfile_external INSTALL_DIR)
+    externalproject_get_property(libsndfile_external INSTALL_DIR)
     set(LIBSNDFILE_INCLUDE_DIR ${INSTALL_DIR}/include)
     set(LIBSNDFILE_LIBRARY_DIR ${INSTALL_DIR}/lib)
 
@@ -231,9 +229,30 @@ if (NOT BUILD_ANDROID)
     #        INSTALL_COMMAND "" #make -C <SOURCE_DIR> install
     #)
 
+    # vulkan sdk
+    #    set(VULKANSDK_DIR ${CMAKE_BINARY_DIR}/vulkansdk)
+    #    externalproject_add(
+    #            vulkansdk
+    #            URL https://sdk.lunarg.com/sdk/download/1.4.341.1/linux/vulkansdk-linux-x86_64-1.4.341.1.tar.xz
+    #            DOWNLOAD_EXTRACT_TIMESTAMP true
+    #            SOURCE_DIR ${VULKANSDK_DIR}
+    #    )
+
+    fetchcontent_declare(
+            vulkansdk
+            URL https://sdk.lunarg.com/sdk/download/1.4.341.1/linux/vulkansdk-linux-x86_64-1.4.341.1.tar.xz
+            DOWNLOAD_EXTRACT_TIMESTAMP true
+    )
+    fetchcontent_makeavailable(vulkansdk)
+    fetchcontent_getproperties(vulkansdk)
+    message(${vulkansdk_SOURCE_DIR})
+    set(VULKANSDK_DIR ${vulkansdk_SOURCE_DIR}/x86_64)
+    set(VULKANSDK_LIB ${VULKANSDK_DIR}/lib)
+
+
     ## LIBDRM
     set(LIBDRM_DIR ${CMAKE_BINARY_DIR}/libdrm)
-    ExternalProject_Add(
+    externalproject_add(
             libdrm
             GIT_REPOSITORY https://gitlab.freedesktop.org/mesa/libdrm.git
             GIT_TAG libdrm-2.4.125
@@ -246,7 +265,7 @@ if (NOT BUILD_ANDROID)
             INSTALL_COMMAND "" #make -C <SOURCE_DIR> install
     )
     set(FFNVENC_DIR ${CMAKE_BINARY_DIR}/ffnvenc)
-    ExternalProject_Add(
+    externalproject_add(
             ffnvenc
             GIT_REPOSITORY https://git.videolan.org/git/ffmpeg/nv-codec-headers.git
             GIT_TAG n13.0.19.0
@@ -266,6 +285,10 @@ if (NOT BUILD_ANDROID)
     # --enable-shared for so libs (if set, --enable-pic is not necessary) #--enable-gnutls
 
 
+    set(LIBS_INCLUDE ${LIBS_INSTALL}/include)
+    set(LIBS_LINK ${LIBS_INSTALL}/lib)
+    set(LIBS_PKG ${LIBS_LINK}/pkgconfig:${VULKANSDK_LIB}/pkgconfig)
+
     # see https://gist.github.com/omegdadi/6904512c0a948225c81114b1c5acb875
     # config with everything
     # set(FFMPEG_CONFIG --enable-shared --enable-libaom --enable-gpl --enable-gnutls --enable-libass --enable-libfdk-aac --enable-libfreetype --enable-libmp3lame --enable-libopus --enable-libsvtav1 --enable-libdav1d --enable-libvorbis --enable-libvpx --enable-libx264 --enable-libx265 --enable-nonfree)
@@ -279,7 +302,7 @@ if (NOT BUILD_ANDROID)
         message(${FFMPEG_CONFIG})
     endif ()
 
-    ExternalProject_Add(
+    externalproject_add(
             ffmpeg
             GIT_REPOSITORY https://github.com/FFmpeg/FFmpeg.git
             GIT_TAG release/8.1
@@ -290,7 +313,7 @@ if (NOT BUILD_ANDROID)
             CONFIGURE_COMMAND
             cd <SOURCE_DIR> &&
             #${CMAKE_COMMAND} -E env PATH=/opt/cuda/bin:/usr/bin
-            ${CMAKE_COMMAND} -E env PKG_CONFIG_PATH=${LIBS_PKG}
+            ${CMAKE_COMMAND} -E env PKG_CONFIG_PATH=${LIBS_PKG}:
             ${CMAKE_COMMAND} -E env CFLAGS=-I${LIBS_INCLUDE}
             ${CMAKE_COMMAND} -E env LDFLAGS=-L${LIBS_LINK}
             ./configure --prefix=<INSTALL_DIR> ${FFMPEG_CONFIG}
@@ -307,13 +330,13 @@ message("FFMPEG will be installed into ${FFMPEG_INSTALL}")
 #set_target_properties(ForexConnect PROPERTIES IMPORTED_LOCATION ${FXCM_LIB_DIR}/libForexConnect.so)
 
 ## godot-cpp
-FetchContent_Declare(
+fetchcontent_declare(
         godot-cpp
         GIT_REPOSITORY https://github.com/godotengine/godot-cpp.git
         # GIT_TAG 1421ba26ad045fb23b35ad7360cf5b2f1de55738
         GIT_TAG master
 )
-FetchContent_MakeAvailable(godot-cpp)
+fetchcontent_makeavailable(godot-cpp)
 #if(NOT godot-cpp_POPULATED)
 #    FetchContent_Populate(godot-cpp)
 #    add_subdirectory(${godot-cpp_SOURCE_DIR})
@@ -343,7 +366,7 @@ project(gav
         LANGUAGES CXX
 )
 
-SET(GAV_SOURCES
+set(GAV_SOURCES
         src/godot/gav_loader.cpp
         src/godot/gav_playback.cpp
         src/godot/gav_settings.cpp
@@ -436,7 +459,7 @@ elseif (USE_SYSTEM_FFMPEG)
     )
 else ()
     message("-- using bundled ffmpeg")
-#    add_dependencies(${LIBNAME} libltc_external libsndfile_external)
+    #    add_dependencies(${LIBNAME} libltc_external libsndfile_external)
     target_include_directories(${LIBNAME} PRIVATE ${LIBS_INCLUDE} ${LIBLTC_INCLUDE_DIR} ${LIBSNDFILE_INCLUDE_DIR}) #${CMAKE_BINARY_DIR}/ffmpeg/src/ffmpeg
     target_link_directories(${LIBNAME} PRIVATE ${LIBS_LINK} ${LIBLTC_LIBRARY_DIR} ${LIBSNDFILE_LIBRARY_DIR})
     #    target_link_options(${LIBNAME} PRIVATE -static-libgcc -static-libstdc++ -pthread -static)
@@ -466,7 +489,7 @@ endif ()
 #    message("output name manually set to ${OUTPUT_NAME}")
 #endif ()
 
-SET(OUTPUT_NAME "lib${LIBNAME}${GODOTCPP_SUFFIX}")
+set(OUTPUT_NAME "lib${LIBNAME}${GODOTCPP_SUFFIX}")
 
 set_target_properties(${LIBNAME}
         PROPERTIES
